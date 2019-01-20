@@ -6,45 +6,154 @@ import tensorflow as tf
 
 BACKWARD = 0
 FORWARD = 1
+BACK_COUPLE = 0
+FRONT_COUPLE = 1
+LOCOMOTIVE = 1
+RAIL_CAR = 2
 NUM_EPOCHS = 500 #Each epoch is a training iteration and 2500 essentially optimizes the network
 NUM_EPISODES = 1
 
-class Truck:
-    inventory = 0
-    
-    def load(self):
-        self.inventory = 1
+class RailCar:
 
-class LoadimgRack:
-    inventory = 100
-    
-    def load(self, truck):
-        truck.load()
-        self.inventory -= 1
-        print("Loaded truck. Remaining inventory:" + self.inventory)
-
-class Locomotive:
     def __init__(self, track, position):
         self.current_track = track
         self.current_position = position
         self.current_track[self.current_position] = self
+        self.front_car_coupled = None
+        self.back_car_coupled = None
 
-    #Move the locomotive
-    def move(self, action):
+    #Moves this rail car and any coupled cars in direction of pull
+    def push(self, direction):
+        #unregisyer from the current track position
         self.current_track[self.current_position] = None
-        #Backward
-        if action == BACKWARD and self.current_position > 0:
+
+        #move backward only if not at end of track
+        if direction == BACKWARD and self.current_position > 0:
             self.current_position -= 1
-        #Forward
-        elif action == FORWARD and self.current_position < len(self.current_track) - 1:
+
+            #push any car coupled to back
+            if self.back_car_coupled != None:
+                self.back_car_coupled.push(direction)
+       
+        #move forward only if not at end of track
+        elif direction == FORWARD and self.current_position < len(self.current_track) - 1:
+            self.current_position += 1
+
+            #push any car coupled to front
+            if self.front_car_coupled != None:
+                self.front_car_coupled.push(direction)
+
+        #register on new track positipn
+        self.current_track[self.current_position] = self
+
+    #Moves this rail car and any coupled cars in direction of pull
+    def pull(self, direction):
+        #unregisyer from the current track position
+        self.current_track[self.current_position] = None
+        
+        #move backward only if not at end of track
+        if direction == BACKWARD and self.current_position > 0:
+            self.current_position -= 1
+           
+            #pull any car coupled to front
+            if self.front_car_coupled != None:
+                self.front_car_coupled.pull(direction)
+
+        #move forward only if not at end of track
+        elif direction == FORWARD and self.current_position < len(self.current_track) - 1:
+            self.current_position += 1
+
+            #pull any car coupled to back
+            if self.back_car_coupled != None:
+                self.back_car_coupled.pull(direction)
+
+        #register on new track positipn
+        self.current_track[self.current_position] = self
+
+    #moves car in direction
+    def move(self, direction):
+        self.current_track[self.current_position] = None
+        if direction == BACKWARD and self.current_position > 0:
+            self.current_position -= 1
+        elif direction == FORWARD and self.current_position < len(self.current_track) - 1:
             self.current_position += 1
         self.current_track[self.current_position] = self
 
-    #Reset to absolute position
+    #reset position
     def reset_to_position(self, position):
         self.current_track[self.current_position] = None
         self.current_position = position
         self.current_track[self.current_position] = self
+
+    #couple to another railcar
+    def couple(self, front_or_back, rail_car):
+        if front_or_back == FRONT_COUPLE:
+            self.front_car_coupled = rail_car
+            rail_car.back_car_coupled = self
+        elif front_or_back == BACK_COUPLE:
+            self.back_car_coupled = rail_car
+            rail_car.front_car_coupled = self
+
+
+    def render(self):
+        return RAIL_CAR
+    
+class Locomotive(RailCar):
+
+    def __init__(self, track, position):
+        RailCar.__init__(self, track, position)
+        self.back_cars = []
+        self.front_cars = []
+
+    def add_back_car(self, rail_car):
+        self.back_cars.append(rail_car)
+
+    def add_front_car(self, rail_car):
+        self.front_cars.append(rail_car)
+        
+    #Moves the locomotive and any coupled cars in the given direction
+    def move(self, direction):
+        #unregisyer from the current track position
+        self.current_track[self.current_position] = None
+
+        #move backward only if entire train not at end of track
+        if direction == BACKWARD and self.current_position - len(self.back_cars) > 0:
+            self.current_position -= 1
+
+            #pull any car coupled to front
+            #if self.front_car_coupled != None:
+            #    self.front_car_coupled.pull(direction)
+            for car in reversed(self.back_cars):
+                car.move(direction)
+
+            #push any car coupled to back
+            #if self.back_car_coupled != None:
+            #    self.back_car_coupled.push(direction)
+            for car in self.front_cars:
+                car.move(direction)
+
+        #move forward only if not at end of track
+        elif direction == FORWARD and self.current_position + len(self.front_cars) < len(self.current_track) - 1:
+            self.current_position += 1
+
+            #pull any car coupled to back
+            #if self.back_car_coupled != None:
+            #    self.back_car_coupled.pull(direction)
+            for car in self.back_cars:
+                car.move(direction)
+
+            for car in reversed(self.front_cars):
+                car.move(direction)
+
+            #push any car coupled to front
+            #if self.front_car_coupled != None:
+            #    self.front_car_coupled.push(direction)
+
+        #register on new track positipn
+        self.current_track[self.current_position] = self
+
+    def render(self):
+        return LOCOMOTIVE
 
     """
     #returms possible locomotove moves from current position
@@ -53,7 +162,7 @@ class Locomotive:
         if self.current_position > 0:
             #left
             possible_moves.append([self.current_track, 0])
-        if self.current_position < len(self.current_track) - 1:
+        if self.cRailCarself.current_track) - 1:
             #right
             possible_moves.append([self.current_track, 1])
         return possible_moves
@@ -68,20 +177,25 @@ class RailYardEnv(gym.Env):
         self.observation_space = gym.spaces.Discrete(10)
         #rebuild the track and set the loco in the starting position
         self.track = [None]*10
-        self.loco = Locomotive(self.track, 0)
+        self.loco = Locomotive(self.track, 2)
+        self.rail_cars = [RailCar(self.track,1), RailCar(self.track,0)]
+        self.loco.add_back_car(self.rail_cars[1])
+        self.loco.add_back_car(self.rail_cars[0])
 
     def reset(self):
-        self.loco.reset_to_position(0)
+        self.loco.reset_to_position(2)
+        self.rail_cars[1].reset_to_position(1)
+        self.rail_cars[0].reset_to_position(0)
         self.action_space.disable_actions([BACKWARD])
 
     #move along the track until reach the end and update the available actions at each step
     def step(self, action):
         self.loco.move(action)
-        if self.loco.current_position == len(self.track) - 1:
+        if self.loco.current_position + len(self.loco.front_cars) == len(self.track) - 1:
             self.action_space.disable_actions([FORWARD])
             reward = 1000
             done = True
-        elif self.loco.current_position == 0:
+        elif self.loco.current_position - len(self.loco.back_cars) == 0:
             self.action_space.disable_actions([BACKWARD])
             reward = -10
             done = False
@@ -98,7 +212,7 @@ class RailYardEnv(gym.Env):
             if t == None:
                 out.append(0)
             else:
-                out.append(1)
+                out.append(t.render())
         #sys.stdout.write(str(out) + "\n")
         return out
 
