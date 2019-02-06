@@ -178,14 +178,14 @@ class RailYardEnv(gym.Env):
         #rebuild the track and set the loco in the starting position
         self.track = [None]*10
         self.loco = Locomotive(self.track, 2)
-        self.rail_cars = [RailCar(self.track,1), RailCar(self.track,0)]
+        self.rail_cars = [RailCar(self.track,0), RailCar(self.track,1)]
         self.loco.add_back_car(self.rail_cars[1])
         self.loco.add_back_car(self.rail_cars[0])
 
     def reset(self):
         self.loco.reset_to_position(2)
-        self.rail_cars[1].reset_to_position(0)
-        self.rail_cars[0].reset_to_position(1)
+        self.rail_cars[1].reset_to_position(1)
+        self.rail_cars[0].reset_to_position(0)
         self.action_space.disable_actions([BACKWARD])
 
     #move along the track until reach the end and update the available actions at each step
@@ -204,7 +204,7 @@ class RailYardEnv(gym.Env):
             reward = -10
             done = False
         #print(self.track)
-        return self.loco.current_position, reward , done, None
+        return self.loco.current_position, reward, done, None
 
     def render(self,mode="human"):
         out = []
@@ -213,7 +213,7 @@ class RailYardEnv(gym.Env):
                 out.append(0)
             else:
                 out.append(t.render())
-        sys.stdout.write(str(out) + "\n")
+        #sys.stdout.write(str(out) + "\n")
         return out
 
 class DiscreteDynamic(gym.spaces.Discrete):
