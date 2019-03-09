@@ -6,6 +6,10 @@ import tensorflow as tf
 
 BACKWARD = 0
 FORWARD = 1
+N = 1
+S = 2
+E = 3
+W = 4
 BACK_COUPLE = 0
 FRONT_COUPLE = 1
 LOCOMOTIVE = 1
@@ -15,10 +19,10 @@ NUM_EPISODES = 1
 
 class RailCar:
 
-    def __init__(self, track, position):
+    def __init__(self, track, orientation):
         self.current_track = track
-        self.current_position = position
-        self.current_track[self.current_position] = self
+        self.current_track.enter(self)
+        self.orientation = orientation
         self.front_car_coupled = None
         self.back_car_coupled = None
 
@@ -80,10 +84,11 @@ class RailCar:
         self.current_track[self.current_position] = self
 
     #reset position
-    def reset_to_position(self, position):
-        self.current_track[self.current_position] = None
-        self.current_position = position
-        self.current_track[self.current_position] = self
+    def reset_to_position(self, track, orientation):
+        self.current_track.leave()
+        self.current_track = track
+        self.current_track.enter(self)
+        self.orientation = orientation
 
     #couple to another railcar
     def couple(self, front_or_back, rail_car):
@@ -94,15 +99,14 @@ class RailCar:
             self.back_car_coupled = rail_car
             rail_car.front_car_coupled = self
 
-
     def render(self):
         return RAIL_CAR
     
 class Locomotive(RailCar):
 
-    def __init__(self, track, position):
-        RailCar.__init__(self, track, position)
-        self.back_cars = []
+    def __init__(self, track, orientation):
+        RailCar.__init__(self, track, orientation)
+        self.back_cars = []orientationorientation
         self.front_cars = []
 
     def add_back_car(self, rail_car):
@@ -113,11 +117,18 @@ class Locomotive(RailCar):
         
     #Moves the locomotive and any coupled cars in the given direction
     def move(self, direction):
-        #unregisyer from the current track position
-        self.current_track[self.current_position] = None
+
+        if self.orientation == E:
+            abs_direction = E if direction = FORWARD else W     
+        elif self.orientation == W:
+            abs_direction = W if direction = FORWARD else E  
+        elif self.orientation == N:
+            abs_direction = N if direction = FORWARD else S 
+        elif self.orientation == S:
+            abs_direction = S if direction = FORWARD else N  
 
         #move backward only if entire train not at end of track
-        if direction == BACKWARD and self.current_position - len(self.back_cars) > 0:
+        if direction == BACKWARD and self.track.length(direction) - len(self.back_cars) > 0:
             self.current_position -= 1
 
             #pull any car coupled to front
@@ -168,24 +179,66 @@ class Locomotive(RailCar):
         return possible_moves
     """
 
+class Track:
+    def __init__(self):
+        self.trackN = None
+        self.trackS = None
+        self.trackE = None
+        self.trackW = None
+        self.car = None
+    
+    def connectN(self, trackN):
+        self.trackN = trackN
+    
+    def connectS(self, trackS):
+        self.trackS = trackS
+    
+    def connectE(self, trackE):
+        self.trackE = trackE
+    
+    def connectW(self, trackW):
+        self.trackW = trackW
+
+    def enter(self,car):
+        self.car = car
+
+    def leave(self):
+        self.car = None
+
+    def length(self,direction):
+        if direction == N:
+            return self.track_length_N
+        elif direction == S:
+            return self.track_length_S
+        elif direction == E:
+            return self.track_length_E
+        elif direction == W:
+            return self.track_length_W
+
 class RailYardEnv(gym.Env):
     
     def __init__(self):
         #actions are backwad and forward       
         self.action_space = DiscreteDynamic(2)
+        
         #states are all the possible positions of the locomotive
         self.observation_space = gym.spaces.Discrete(10)
+        
         #rebuild the track and set the loco in the starting position
-        self.track = [None]*10
-        self.loco = Locomotive(self.track, 2)
-        self.rail_cars = [RailCar(self.track,0), RailCar(self.track,1)]
+        self.grid = [Track() for j in range(10)]
+        for j in range(9):
+            self.grid[j].connectE(self.grid[j+1])
+            self.grid[j+1].connectW(self.grid[j])
+
+        self.loco = Locomotive(self.grid[2],E)
+        self.rail_cars = [RailCar(self.grid[0],E), RailCar(self.grid[1],E)]
         self.loco.add_back_car(self.rail_cars[1])
         self.loco.add_back_car(self.rail_cars[0])
 
     def reset(self):
-        self.loco.reset_to_position(2)
-        self.rail_cars[1].reset_to_position(1)
-        self.rail_cars[0].reset_to_position(0)
+        self.loco.reset_to_position(self.grid[2],E)
+        self.rail_cars[1].reset_to_position(self.grid[1],E)
+        self.rail_cars[0].reset_to_position(self.grid[0],E)
         self.action_space.disable_actions([BACKWARD])
 
     #move along the track until reach the end and update the available actions at each step
@@ -208,11 +261,13 @@ class RailYardEnv(gym.Env):
 
     def render(self,mode="human"):
         out = []
-        for t in self.track:
+        for t in self.grid:
             if t == None:
-                out.append(0)
+                out.append(" ")
+            elif t.car == None:
+                out.append("0")
             else:
-                out.append(t.render())
+                out.append(t.car.render())
         #sys.stdout.write(str(out) + "\n")
         return out
 
