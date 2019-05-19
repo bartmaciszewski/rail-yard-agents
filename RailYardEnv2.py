@@ -6,10 +6,10 @@ import tensorflow as tf
 
 EMPTY = 0
 FULL = 1
-NUMBER_OF_TRACKS = 3
+NUMBER_OF_TRACKS = 4
 NUMBER_OF_CARS = 2
 INBOUND_TRACK_ID = 2
-OUTBOUND_TRACK_ID = 3
+OUTBOUND_TRACK_ID = 4
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
 
@@ -22,20 +22,20 @@ class RailYardEnv2(gym.Env):
 
     def reset(self):
         self.lead1 = Track(1,5)
-        self.spur1 = Track(2,5)
-        self.spur2 = Track(3,5)
-        self.lead1.connect(self.spur1)
-        self.lead1.connect(self.spur2)
+        self.inbound = Track(2,5)
+        self.rack1 = Rack(3,2,2)
+        self.outbound = Track(4,5)
+        self.lead1.connect(self.inbound)
+        self.lead1.connect(self.rack1)
+        self.lead1.connect(self.outbound)
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
-        self.tracks = {1 : self.lead1, 2 : self.spur1, 3 : self.spur2}
-        self.period = 0
+        self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.outbound}
         for i in range(NUMBER_OF_CARS):
-            self.spur1.push(RailCar(EMPTY))
+            self.inbound.push(RailCar(EMPTY))
         self.action_space.available_actions = self.possible_actions()
 
-    #follow an action to transition to the next state
     def step(self,action):
-        self.period += 1
+        """Follow an action to transition to the next state of the yard."""
         
         decoded_action = self.decode_action(action)
         
@@ -148,7 +148,7 @@ class Track:
         return self.length - self.number_of_cars()
 
     def __str__(self):
-        return str([str(car) for car in self.cars])
+        return str(self.ID) + ": " + str([str(car) for car in self.cars])
 
     def connect(self, track):
         self.connected_tracks.append(track)
@@ -168,11 +168,30 @@ class Switch(Track):
         self.A_B = switch_pos
 
 class Rack(Track):
-    def load(car,period):
-        pass
+    def __init__(self, ID, num_bays, load_time):
+        self.load_time = load_time
+        self.is_loading = False
+        super(self.__class__, self).__init__(ID, num_bays)
     
-    def isLoading(period):
-        pass
+    def start_load(self, car, period):
+        self.current_rack_time = 0
+        self.is_loading = True
+    
+    def step(self):
+        """Continues loading cars on rack. Finish loading cars if sufficient time has passed."""
+
+        if self.is_loading == True and self.current_rack_time >= self.load_time:
+            #we are done loading
+            for car in self.cars:
+                car.empty_or_full = FULL 
+            self.is_loading = False
+            self.current_rack_time = 0
+
+        self.current_rack_time += 1
+
+    def is_loading(self):
+
+        return self.is_loading
 
 class SimpleOneByOnePolicyAgent:
     def __init__(self,rail_yard):
