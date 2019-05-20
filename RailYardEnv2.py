@@ -10,6 +10,7 @@ NUMBER_OF_TRACKS = 4
 NUMBER_OF_CARS = 2
 INBOUND_TRACK_ID = 2
 OUTBOUND_TRACK_ID = 4
+DO_NOTHING_ACTION = 0
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
 
@@ -23,41 +24,65 @@ class RailYardEnv2(gym.Env):
     def reset(self):
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.rack1 = Rack(3,2,2)
+        self.rack1 = Rack(3,2,4)
         self.outbound = Track(4,5)
         self.lead1.connect(self.inbound)
         self.lead1.connect(self.rack1)
         self.lead1.connect(self.outbound)
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
         self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.outbound}
+        self.racks = {1 : self.rack1}
         for i in range(NUMBER_OF_CARS):
             self.inbound.push(RailCar(EMPTY))
         self.action_space.available_actions = self.possible_actions()
 
     def step(self,action):
         """Follow an action to transition to the next state of the yard."""
+
+        #step 1: continue loading any racks
+        for rack in self.racks.values():
+            rack.load_step()
+
+        if action != DO_NOTHING_ACTION:
+            decoded_action = self.decode_action(action)
         
-        decoded_action = self.decode_action(action)
+            #step 2: switch i cars from source to destination track
+            for i in range(decoded_action[2]):
+                self.tracks[decoded_action[1]].push(self.tracks[decoded_action[0]].pop())
         
-        #switch i cars from source to destination track
-        for i in range(decoded_action[2]):
-            self.tracks[decoded_action[1]].push(self.tracks[decoded_action[0]].pop())
-        
+            #step 3: start loading if the destination was a rack
+            if isinstance(self.tracks[decoded_action[1]],Rack):
+                self.tracks[decoded_action[1]].start_load()
+
+        #step 4: determine the next possible actions from this new state
         self.action_space.available_actions = self.possible_actions()
 
         #have we moved all the cars to the outbound track?
-        done = True if self.tracks[OUTBOUND_TRACK_ID].number_of_cars() == NUMBER_OF_CARS else False
+        done = self.is_success_state() 
 
         return self.tracks, 10, done, None
-        
+    
+    def is_success_state(self):
+        """Returns True if we have loaded all the required cars and moved them to the outbound track."""
+
+        if self.tracks[OUTBOUND_TRACK_ID].number_of_cars() == NUMBER_OF_CARS:
+            #All the cars are on the outbound; ensure they are all loaded
+            for car in self.tracks[OUTBOUND_TRACK_ID].cars:
+                return not car.is_empty() #False if at least one car is empty
+            return True
+        else:
+            return False
+
     #return all the possible actions in this state
     def possible_actions(self):
         actions = []
+        actions.append(DO_NOTHING_ACTION)
         for source_track in self.tracks.values(): #for each track in the rail yard
             for destination_track in source_track.connected_tracks: #for all the connected tracks
-                if not source_track.isEmpty() and not destination_track.isFull(): #check the source track is not empty and destination not full
-                    for num_cars_to_move in range(min(source_track.number_of_cars(), destination_track.number_of_empty_spots())):
-                        actions.append(self.encode_action(source_track.ID, destination_track.ID, num_cars_to_move + 1)) #encode action to move k cars
+                if not source_track.derail_up() and not destination_track.derail_up(): #don’t move any cars to/from loading racks
+                    if not source_track.isEmpty() and not destination_track.isFull(): #check the source track is not empty and destination not full
+                        for num_cars_to_move in range(min(source_track.number_of_cars(), destination_track.number_of_empty_spots())):
+                            actions.append(self.encode_action(source_track.ID, destination_track.ID, num_cars_to_move + 1)) #encode action to move k cars
         return actions
 
     #encode an action to move cars from one track to another as an intetger
@@ -119,6 +144,9 @@ class RailCar:
     def __init__(self, empty_full):
         self.empty_or_full = empty_full
 
+    def is_empty(self):
+        return True if self.empty_or_full == EMPTY else False
+
     def __str__(self):
         return str(self.empty_or_full)
 
@@ -143,9 +171,12 @@ class Track:
 
     def number_of_cars(self):
         return len(self.cars)
-
+ 
     def number_of_empty_spots(self):
         return self.length - self.number_of_cars()
+
+    def derail_up(self):
+        return False
 
     def __str__(self):
         return str(self.ID) + ": " + str([str(car) for car in self.cars])
@@ -170,27 +201,30 @@ class Switch(Track):
 class Rack(Track):
     def __init__(self, ID, num_bays, load_time):
         self.load_time = load_time
+        self.current_load_time = 0
         self.is_loading = False
         super(self.__class__, self).__init__(ID, num_bays)
-    
-    def start_load(self, car, period):
+
+    def start_load(self):
         self.current_rack_time = 0
         self.is_loading = True
     
-    def step(self):
+    def load_step(self):
         """Continues loading cars on rack. Finish loading cars if sufficient time has passed."""
 
-        if self.is_loading == True and self.current_rack_time >= self.load_time:
+        if self.is_loading == True and self.current_load_time >= self.load_time:
             #we are done loading
             for car in self.cars:
                 car.empty_or_full = FULL 
             self.is_loading = False
-            self.current_rack_time = 0
+            self.current_load_time = 0
 
-        self.current_rack_time += 1
+        self.current_load_time += 1
 
     def is_loading(self):
+        return self.is_loading
 
+    def derail_up(self):
         return self.is_loading
 
 class SimpleOneByOnePolicyAgent:
