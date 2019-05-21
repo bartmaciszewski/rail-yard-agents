@@ -13,6 +13,7 @@ OUTBOUND_TRACK_ID = 4
 DO_NOTHING_ACTION = 0
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
+PRODUCTS = {"MOGAS" : "M", "DIESEL" : "D", "JET" : "J", "ASPHALT" : "A"}
 
 class RailYardEnv2(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -33,8 +34,10 @@ class RailYardEnv2(gym.Env):
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
         self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.outbound}
         self.racks = {1 : self.rack1}
+        self.cars = []
         for i in range(NUMBER_OF_CARS):
-            self.inbound.push(RailCar(EMPTY))
+            self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
+            self.inbound.push(self.cars[i])
         self.action_space.available_actions = self.possible_actions()
 
     def step(self,action):
@@ -149,14 +152,18 @@ class DiscreteDynamic(gym.spaces.Discrete):
         return ()
 
 class RailCar:
-    def __init__(self, empty_full):
+    def __init__(self, empty_full, product):
         self.empty_or_full = empty_full
+        self.product = product
 
     def is_empty(self):
         return True if self.empty_or_full == EMPTY else False
 
     def __str__(self):
-        return str(self.empty_or_full)
+        if self.empty_or_full == EMPTY:
+            return self.product.lower()
+        else:
+            return self.product.capitalize()
 
 class Track:
     def __init__(self, ID, length):
