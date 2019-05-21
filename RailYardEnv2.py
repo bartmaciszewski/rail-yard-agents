@@ -22,9 +22,10 @@ class RailYardEnv2(gym.Env):
         self.action_space = DiscreteDynamic(NUMBER_OF_TRACKS*NUMBER_OF_TRACKS*NUMBER_OF_CARS)
 
     def reset(self):
+        self.period = 0
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.rack1 = Rack(3,2,4)
+        self.rack1 = Rack(3,2,2)
         self.outbound = Track(4,5)
         self.lead1.connect(self.inbound)
         self.lead1.connect(self.rack1)
@@ -41,7 +42,8 @@ class RailYardEnv2(gym.Env):
 
         #step 1: continue loading any racks
         for rack in self.racks.values():
-            rack.load_step()
+            if rack.is_loading:
+                rack.load_step()
 
         if action != DO_NOTHING_ACTION:
             decoded_action = self.decode_action(action)
@@ -59,6 +61,8 @@ class RailYardEnv2(gym.Env):
 
         #have we moved all the cars to the outbound track?
         done = self.is_success_state() 
+
+        self.period += 1
 
         return self.tracks, 10, done, None
     
@@ -101,15 +105,19 @@ class RailYardEnv2(gym.Env):
         out = []
         out.append(i % NUMBER_OF_CARS + 1)
         i = i // NUMBER_OF_CARS
-        out.append(i % NUMBER_OF_TRACKS + 1) 
+        out.append(i % NUMBER_OF_TRACKS + 1)
         i = i // NUMBER_OF_TRACKS
         out.append(i + 1)
         #assert 0 <= i < NUMBER_OF_TRACKS
         return list(reversed(out))
 
     def render(self,mode="human"):
+        sys.stdout.write("Period: " + str(self.period) + "\n")
         for track in self.tracks.values():
-            sys.stdout.write(str(track) + "\n")
+            if isinstance(track, Rack):
+                sys.stdout.write("Rack " + str(track) + "\n")
+            else:
+                sys.stdout.write("Track " + str(track) + "\n")
         sys.stdout.write("\n")
 
 class DiscreteDynamic(gym.spaces.Discrete):
@@ -206,7 +214,7 @@ class Rack(Track):
         super(self.__class__, self).__init__(ID, num_bays)
 
     def start_load(self):
-        self.current_rack_time = 0
+        self.current_load_time = 0
         self.is_loading = True
     
     def load_step(self):
