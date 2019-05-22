@@ -6,10 +6,10 @@ import tensorflow as tf
 
 EMPTY = 0
 FULL = 1
-NUMBER_OF_TRACKS = 4
-NUMBER_OF_CARS = 2
+NUMBER_OF_TRACKS = 5
+NUMBER_OF_CARS = 4
 INBOUND_TRACK_ID = 2
-OUTBOUND_TRACK_ID = 4
+OUTBOUND_TRACK_ID = 5
 DO_NOTHING_ACTION = 0
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
@@ -26,17 +26,22 @@ class RailYardEnv2(gym.Env):
         self.period = 0
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.rack1 = Rack(3,2,2)
-        self.outbound = Track(4,5)
+        self.rack1 = Rack(3,2,PRODUCTS["MOGAS"],2)
+        self.rack2 = Rack(4,2,PRODUCTS["DIESEL"],2)    
+        self.outbound = Track(5,5)
         self.lead1.connect(self.inbound)
         self.lead1.connect(self.rack1)
+        self.lead1.connect(self.rack2)
         self.lead1.connect(self.outbound)
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
-        self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.outbound}
-        self.racks = {1 : self.rack1}
+        self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.rack2, 5 : self.outbound}
+        self.racks = {1 : self.rack1, 2 : self.rack2}
         self.cars = []
-        for i in range(NUMBER_OF_CARS):
+        for i in range(2):
             self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
+            self.inbound.push(self.cars[i])
+        for i in range(2):
+            self.cars.append(RailCar(EMPTY, PRODUCTS["DIESEL"]))
             self.inbound.push(self.cars[i])
         self.action_space.available_actions = self.possible_actions()
 
@@ -214,23 +219,31 @@ class Switch(Track):
         self.A_B = switch_pos
 
 class Rack(Track):
-    def __init__(self, ID, num_bays, load_time):
+    def __init__(self, ID, num_bays, product, load_time):
         self.load_time = load_time
+        self.product = product
         self.current_load_time = 0
         self.is_loading = False
         super(self.__class__, self).__init__(ID, num_bays)
 
     def start_load(self):
-        self.current_load_time = 0
-        self.is_loading = True
-    
+        """Starts the process of loading cars under a rack if at least one car is product compatible."""
+
+        for car in self.cars:
+            if car.product == self.product:
+                self.current_load_time = 0
+                self.is_loading = True
+                break
+
     def load_step(self):
         """Continues loading cars on rack. Finish loading cars if sufficient time has passed."""
 
         if self.is_loading == True and self.current_load_time >= self.load_time:
             #we are done loading
             for car in self.cars:
-                car.empty_or_full = FULL 
+                #only fill up car for the rack’s product
+                if car.product == self.product:
+                    car.empty_or_full = FULL 
             self.is_loading = False
             self.current_load_time = 0
 
