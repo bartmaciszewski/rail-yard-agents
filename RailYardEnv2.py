@@ -40,9 +40,9 @@ class RailYardEnv2(gym.Env):
         for i in range(2):
             self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
             self.inbound.push(self.cars[i])
-        for i in range(2):
+        for j in range(2,4):
             self.cars.append(RailCar(EMPTY, PRODUCTS["DIESEL"]))
-            self.inbound.push(self.cars[i])
+            self.inbound.push(self.cars[j])
         self.action_space.available_actions = self.possible_actions()
 
     def step(self,action):
@@ -79,9 +79,10 @@ class RailYardEnv2(gym.Env):
 
         if self.tracks[OUTBOUND_TRACK_ID].number_of_cars() == NUMBER_OF_CARS:
             #All the cars are on the outbound; ensure they are all loaded
+            all_loaded = True
             for car in self.tracks[OUTBOUND_TRACK_ID].cars:
-                return not car.is_empty() #False if at least one car is empty
-            return True
+                all_loaded = not car.is_empty() #False if at least one car is empty
+            return all_loaded
         else:
             return False
 
