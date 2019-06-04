@@ -6,10 +6,10 @@ import tensorflow as tf
 
 EMPTY = 0
 FULL = 1
-NUMBER_OF_TRACKS = 5
+NUMBER_OF_TRACKS = 7
 NUMBER_OF_CARS = 4
 INBOUND_TRACK_ID = 2
-OUTBOUND_TRACK_ID = 5
+OUTBOUND_TRACK_ID = 7
 DO_NOTHING_ACTION = 0
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
@@ -26,16 +26,21 @@ class RailYardEnv2(gym.Env):
         self.period = 0
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.rack1 = Rack(3,2,PRODUCTS["MOGAS"],2)
-        self.rack2 = Rack(4,2,PRODUCTS["DIESEL"],2)    
-        self.outbound = Track(5,5)
+        self.marshalling_track1 = MarshallingTrack(3,5,PRODUCTS["MOGAS"])
+        self.marshalling_track2 = MarshallingTrack(4,5,PRODUCTS["DIESEL"])
+        self.rack1 = Rack(5,2,PRODUCTS["MOGAS"],2)
+        self.rack2 = Rack(6,2,PRODUCTS["DIESEL"],2)    
+        self.outbound = Track(7,5)
         self.lead1.connect(self.inbound)
+        self.lead1.connect(self.marshalling_track1)
+        self.lead1.connect(self.marshalling_track2)
         self.lead1.connect(self.rack1)
         self.lead1.connect(self.rack2)
         self.lead1.connect(self.outbound)
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
-        self.tracks = {1 : self.lead1, 2 : self.inbound, 3 : self.rack1, 4 : self.rack2, 5 : self.outbound}
+        self.tracks = {1 : self.lead1, 2 : self.inbound, 3 :  self.marshalling_track1, 4 : self.marshalling_track2, 5 : self.rack1, 6 : self.rack2, 7 : self.outbound}
         self.racks = {1 : self.rack1, 2 : self.rack2}
+        self.marshalling_tracks = [self.marshalling_track1, self.marshalling_track2]
         self.cars = []
         for i in range(2):
             self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
@@ -50,7 +55,7 @@ class RailYardEnv2(gym.Env):
 
         #step 1: continue loading any racks
         for rack in self.racks.values():
-            if rack.is_loading:
+            if rack.is_currently_loading():
                 rack.load_step()
 
         if action != DO_NOTHING_ACTION:
@@ -93,7 +98,7 @@ class RailYardEnv2(gym.Env):
         for source_track in self.tracks.values(): #for each track in the rail yard
             for destination_track in source_track.connected_tracks: #for all the connected tracks
                 if not source_track.derail_up() and not destination_track.derail_up(): #don’t move any cars to/from loading racks
-                    if not source_track.isEmpty() and not destination_track.isFull(): #check the source track is not empty and destination not full
+                    if not source_track.is_empty() and not destination_track.is_full(): #check the source track is not empty and destination not full
                         for num_cars_to_move in range(min(source_track.number_of_cars(), destination_track.number_of_empty_spots())):
                             actions.append(self.encode_action(source_track.ID, destination_track.ID, num_cars_to_move + 1)) #encode action to move k cars
         return actions
@@ -184,10 +189,13 @@ class Track:
     def pop(self):
         return self.cars.pop()
 
-    def isEmpty(self):
+    def peek(self):
+        return self.cars[-1]
+
+    def is_empty(self):
         return self.cars == []
 
-    def isFull(self):
+    def is_full(self):
         return True if self.number_of_cars() == self.length else False
 
     def number_of_cars(self):
@@ -218,6 +226,19 @@ class Switch(Track):
     #throw the switch to either A or B position
     def switch(self, switch_pos):
         self.A_B = switch_pos
+
+class MarshallingTrack(Track):
+    """A track that is designated for a specific product.
+    
+    Attributes:
+        ID: the unique inteer identifier of this track in the yard
+        length: the length of the track in car units
+        product the type of proudct for which  this track is intended 
+    """
+
+    def __init__(self, ID, length, product):
+        self.product = product
+        super(self.__class__, self).__init__(ID, length)
 
 class Rack(Track):
     def __init__(self, ID, num_bays, product, load_time):
@@ -250,31 +271,78 @@ class Rack(Track):
 
         self.current_load_time += 1
 
-    def is_loading(self):
+    def is_currently_loading(self):
         return self.is_loading
 
     def derail_up(self):
         return self.is_loading
 
-class SimpleOneByOnePolicyAgent:
-    def __init__(self,rail_yard):
+class RailyardPolicy:
+    def __init__(self, rail_yard):
         self.rail_yard = rail_yard
 
-    def play(self):
+    def next_action(self):
+        raise NotImplementedError("Please Implement this method")
+
+class SimpleOneByOnePolicy(RailyardPolicy):
+    def next_action(self):
         action = [[0 for j in range(NUMBER_OF_TRACKS)] for i in range(NUMBER_OF_TRACKS)]
         for i in reversed(range(NUMBER_OF_TRACKS-1)):
-            if not self.rail_yard.tracks[i].isEmpty() and not self.rail_yard.tracks[i+1].isFull():
+            if not self.rail_yard.tracks[i].is_empty() and not self.rail_yard.tracks[i+1].is_full():
                 action[i][i+1] = 1
         return action
 
+class SimpleTrainSortPolicy(RailyardPolicy):
+    def __init__(self, rail_yard, inbound, outbound, racks, marshalling_tracks):
+        self.rail_yard = rail_yard
+        self.inbound = inbound
+        self.outbound = outbound
+        self.racks = racks
+        self.marshalling_tracks = marshalling_tracks
+
+    def next_action(self):
+        #are there any racks that can be freed up?
+        for rack in self.racks.values():
+            if not rack.is_currently_loading() and not rack.is_empty():
+                #move the maximum number of cars from the rack finished loading to the outbound
+                return self.rail_yard.encode_action(rack.ID, self.outbound.ID, min(rack.number_of_cars(), self.outbound.number_of_empty_spots()))
+
+        #are there any cars ready on the marshalling track that can be loaded?
+        for marshalling_track1 in self.marshalling_tracks:
+            if not marshalling_track1.is_empty():
+                #are there any empty racks that can load this product
+                for rack2 in self.racks.values():
+                    if rack2.is_empty() and rack2.product == marshalling_track1.cars[0].product:
+                        #move the maximum number of cars from the marshalling track to the rack
+                        return self.rail_yard.encode_action(marshalling_track1.ID, rack2.ID, min(marshalling_track1.number_of_cars(), rack2.number_of_empty_spots()))
+
+        #are there any inbound cars left to sort by produc?
+        if not self.inbound.is_empty():
+            for marshalling_track2 in self.marshalling_tracks:
+                #make sure the marshalling track has space and is intended for the product avaible at the top of the inbound
+                if not marshalling_track2.is_full() and self.inbound.peek().product == marshalling_track2.product:
+                    #count how many cars of the same product are at the top of track available to pull
+                    count_same_product = 0
+                    last_product = self.inbound.peek().product
+                    for car in reversed(self.inbound.cars):
+                        if last_product == car.product:
+                            count_same_product += 1
+                            last_product = car.product
+                        else: 
+                            break
+                    return self.rail_yard.encode_action(self.inbound.ID, marshalling_track2.ID, min(count_same_product, marshalling_track2.number_of_empty_spots()))
+
+        return DO_NOTHING_ACTION
 
 #Main
 rail_yard = RailYardEnv2()
-#ss = SimpleOneByOnePolicyAgent(rail_yard)
-done = False
 rail_yard.reset()
 rail_yard.render()
+#ss = SimpleOneByOnePolicyAgent(rail_yard)
+policy = SimpleTrainSortPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
+done = False
 while not done:
-    #action = ss.play()
-    observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
+    action = policy.next_action()
+    #observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
+    observation, reward, done, info = rail_yard.step(action)
     rail_yard.render()
