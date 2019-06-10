@@ -24,6 +24,8 @@ class RailYardEnv2(gym.Env):
 
     def reset(self):
         self.period = 0
+        
+        #Create tracks
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
         self.marshalling_track1 = MarshallingTrack(3,5,PRODUCTS["MOGAS"])
@@ -31,6 +33,8 @@ class RailYardEnv2(gym.Env):
         self.rack1 = Rack(5,2,PRODUCTS["MOGAS"],2)
         self.rack2 = Rack(6,2,PRODUCTS["DIESEL"],2)    
         self.outbound = Track(7,5)
+        
+        #Connect tracks to form network
         self.lead1.connect(self.inbound)
         self.lead1.connect(self.marshalling_track1)
         self.lead1.connect(self.marshalling_track2)
@@ -38,9 +42,13 @@ class RailYardEnv2(gym.Env):
         self.lead1.connect(self.rack2)
         self.lead1.connect(self.outbound)
         #self.switch1 = Switch(self.lead1, self.spur1, self.spur2)
+        
+        #Create track reference lists
         self.tracks = {1 : self.lead1, 2 : self.inbound, 3 :  self.marshalling_track1, 4 : self.marshalling_track2, 5 : self.rack1, 6 : self.rack2, 7 : self.outbound}
         self.racks = {1 : self.rack1, 2 : self.rack2}
         self.marshalling_tracks = [self.marshalling_track1, self.marshalling_track2]
+
+        #Create cars
         self.cars = []
         for i in range(2):
             self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
@@ -48,6 +56,13 @@ class RailYardEnv2(gym.Env):
         for j in range(2,4):
             self.cars.append(RailCar(EMPTY, PRODUCTS["DIESEL"]))
             self.inbound.push(self.cars[j])
+        
+        #Build load schedule
+        self.loading_schedule = LoadingSchedule()
+        self.loading_schedule.add_to_schedule(self.cars[1], self.cars[1].product)
+        self.loading_schedule.add_to_schedule(self.cars[2], self.cars[2].product)
+
+        #build initial action space
         self.action_space.available_actions = self.possible_actions()
 
     def step(self,action):
@@ -82,17 +97,21 @@ class RailYardEnv2(gym.Env):
     def is_success_state(self):
         """Returns True if we have loaded all the required cars and moved them to the outbound track."""
 
-        if self.tracks[OUTBOUND_TRACK_ID].number_of_cars() == NUMBER_OF_CARS:
-            #All the cars are on the outbound; ensure they are all loaded
-            all_loaded = True
-            for car in self.tracks[OUTBOUND_TRACK_ID].cars:
-                all_loaded = not car.is_empty() #False if at least one car is empty
-            return all_loaded
-        else:
-            return False
+        #Check if all scheduled cars loaded
+        for car_to_load in self.loading_schedule.get_cars():
+            car_loaded = False
+            #check if car is not empty and is on the outbound
+            if not car_to_load.is_empty():
+                for car_on_outboun in self.outbound.cars:
+                    if car_on_outboun == car_to_load:
+                        car_loaded = True
+            #return fals if there is car that has not been loaded or placed on the outbound
+            if car_loaded == False:
+                return False
+        return True
 
-    #return all the possible actions in this state
     def possible_actions(self):
+        """Return all the possible actions in this state."""
         actions = []
         actions.append(DO_NOTHING_ACTION)
         for source_track in self.tracks.values(): #for each track in the rail yard
@@ -276,6 +295,27 @@ class Rack(Track):
 
     def derail_up(self):
         return self.is_loading
+
+class LoadingSchedule:
+    """A list of tuples that represents the rail cars and products that need to be loaded on a given day
+    """
+    
+    def __init__(self):
+        self.loading_schedule = []
+        self.cars = []
+    
+    def add_to_schedule(self, car, product):
+        self.loading_schedule.append([car, product])
+        self.cars.append(car)
+        
+    def get_cars(self):
+        return self.cars
+    
+    def is_on_schedule(self, car, product):
+        for car_product in self.loading_schedule:
+            if car_product[0] == car and car_product[1] == product:
+                return True
+        return False
 
 class RailyardPolicy:
     def __init__(self, rail_yard):
