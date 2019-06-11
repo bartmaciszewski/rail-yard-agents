@@ -51,10 +51,10 @@ class RailYardEnv2(gym.Env):
         #Create cars
         self.cars = []
         for i in range(2):
-            self.cars.append(RailCar(EMPTY, PRODUCTS["MOGAS"]))
+            self.cars.append(RailCar("m" + str(i+1),EMPTY, PRODUCTS["MOGAS"]))
             self.inbound.push(self.cars[i])
         for j in range(2,4):
-            self.cars.append(RailCar(EMPTY, PRODUCTS["DIESEL"]))
+            self.cars.append(RailCar("d" + str(j+1),EMPTY, PRODUCTS["DIESEL"]))
             self.inbound.push(self.cars[j])
         
         #Build load schedule
@@ -182,7 +182,8 @@ class DiscreteDynamic(gym.spaces.Discrete):
         return ()
 
 class RailCar:
-    def __init__(self, empty_full, product):
+    def __init__(self, ID, empty_full, product):
+        self.ID = ID
         self.empty_or_full = empty_full
         self.product = product
 
@@ -191,9 +192,9 @@ class RailCar:
 
     def __str__(self):
         if self.empty_or_full == EMPTY:
-            return self.product.lower()
+            return self.ID.lower()
         else:
-            return self.product.capitalize()
+            return self.ID.capitalize()
 
 class Track:
     def __init__(self, ID, length):
@@ -317,6 +318,12 @@ class LoadingSchedule:
                 return True
         return False
 
+    def __str__(self):
+        print_string = ""
+        for car_product in self.loading_schedule:
+            print_string += "Car: " + car_product[0].ID + " Product:" + car_product[1] + "\n"
+        return print_string
+
 class RailyardPolicy:
     def __init__(self, rail_yard):
         self.rail_yard = rail_yard
@@ -377,6 +384,9 @@ class SimpleTrainSortPolicy(RailyardPolicy):
 #Main
 rail_yard = RailYardEnv2()
 rail_yard.reset()
+print("\nStarting game...\n")
+print("Loading Schedule:")
+print(str(rail_yard.loading_schedule) + "\n")
 rail_yard.render()
 #ss = SimpleOneByOnePolicyAgent(rail_yard)
 policy = SimpleTrainSortPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
