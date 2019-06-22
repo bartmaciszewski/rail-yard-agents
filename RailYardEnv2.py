@@ -59,8 +59,9 @@ class RailYardEnv2(gym.Env):
         
         #Build load schedule
         self.loading_schedule = LoadingSchedule()
-        self.loading_schedule.add_to_schedule(self.cars[1], self.cars[1].product)
-        self.loading_schedule.add_to_schedule(self.cars[2], self.cars[2].product)
+        self.loading_schedule.add_to_schedule(1, self.cars[1], self.cars[1].product)
+        self.loading_schedule.add_to_schedule(1, self.cars[2], self.cars[2].product)
+        self.loading_schedule.add_to_schedule(2, self.cars[3], self.cars[3].product)
 
         #build initial action space
         self.action_space.available_actions = self.possible_actions()
@@ -98,16 +99,17 @@ class RailYardEnv2(gym.Env):
         """Returns True if we have loaded all the required cars and moved them to the outbound track."""
 
         #Check if all scheduled cars loaded
-        for car_to_load in self.loading_schedule.get_cars():
-            car_loaded = False
-            #check if car is not empty and is on the outbound
-            if not car_to_load.is_empty():
-                for car_on_outboun in self.outbound.cars:
-                    if car_on_outboun == car_to_load:
-                        car_loaded = True
-            #return fals if there is car that has not been loaded or placed on the outbound
-            if car_loaded == False:
-                return False
+        for i in range(self.loading_schedule.number_of_sets()):
+            for car_to_load in self.loading_schedule.get_cars(i):
+                car_loaded = False
+                #check if car is not empty and is on the outbound
+                if not car_to_load.is_empty():
+                    for car_on_outboun in self.outbound.cars:
+                        if car_on_outboun == car_to_load:
+                            car_loaded = True
+                #return fals if there is car that has not been loaded or placed on the outbound
+                if car_loaded == False:
+                    return False
         return True
 
     def possible_actions(self):
@@ -298,30 +300,39 @@ class Rack(Track):
         return self.is_loading
 
 class LoadingSchedule:
-    """A list of tuples that represents the rail cars and products that need to be loaded on a given day
+    """A list of tuples that represents the rail cars and products that need to be loaded for a given set on a given day
     """
     
     def __init__(self):
-        self.loading_schedule = []
-        self.cars = []
+        self.loading_schedule = [[]]
+        self.cars = [[]] 
     
-    def add_to_schedule(self, car, product):
-        self.loading_schedule.append([car, product])
-        self.cars.append(car)
+    def add_to_schedule(self, set, car, product):
+        #are we adding another set?
+        if set > len(self.loading_schedule):
+            self.loading_schedule.append([])
+            self.cars.append([])    
+        self.loading_schedule[set - 1].append([car, product])
+        self.cars[set - 1].append(car)
         
-    def get_cars(self):
-        return self.cars
+    def get_cars(self,set):
+        return self.cars[set - 1]
     
-    def is_on_schedule(self, car, product):
-        for car_product in self.loading_schedule:
+    def is_on_schedule(self, set, car, product):
+        for car_product in self.loading_schedule[set - 1]:
             if car_product[0] == car and car_product[1] == product:
                 return True
         return False
 
+    def number_of_sets(self):
+        return(len(self.loading_schedule))
+
     def __str__(self):
         print_string = ""
-        for car_product in self.loading_schedule:
-            print_string += "Car: " + car_product[0].ID + " Product:" + car_product[1] + "\n"
+        for i in range(len(self.loading_schedule)):
+            print_string += "Set: " + str(i+1) + "\n"
+            for car_product in self.loading_schedule[i]:
+                print_string += "Car: " + car_product[0].ID + " Product:" + car_product[1] + "\n"
         return print_string
 
 class RailyardPolicy:
@@ -339,7 +350,24 @@ class SimpleOneByOnePolicy(RailyardPolicy):
                 action[i][i+1] = 1
         return action
 
-class SimpleTrainSortPolicy(RailyardPolicy):
+class MyopicGreedySortByProductPolicy(RailyardPolicy):
+    """A policy that moves cars to the marshalling tracks by product as the first sorting step.  
+        At every step it first looks to see if there are any cars finished loading that can be moved to the outbound,
+        then if there are any cars that can be moved under a rack from the marshalling tracking, 
+        then if there are any cars on the inbound that can be moved to the marshalling track.  
+        
+        Note this policy does not respect sets nor the loading schedule - it greedily loads cars and pushes the first ones loaded to the outbound 
+        Therefore the policy is not guaranteed to meet the daily loading schedule.
+        It does not consider multiple periods (myopic)
+
+    Attributes:
+        rail_yard: the reference to the rail yard
+        inbound: the inbound track
+        outbound: the outbound track
+        racks: the loading racks
+        marshalling_tracks: the marshalling tracks to sort by product 
+    """
+
     def __init__(self, rail_yard, inbound, outbound, racks, marshalling_tracks):
         self.rail_yard = rail_yard
         self.inbound = inbound
@@ -381,6 +409,39 @@ class SimpleTrainSortPolicy(RailyardPolicy):
 
         return DO_NOTHING_ACTION
 
+class MyopicSortBySetPolicy(RailyardPolicy):
+    """A policy that moves cars to the marshalling tracks by set as the first sorting step.  
+        It then pulls cars from the current set marshalling track under the correct rack and loads.
+        Lastly it frees up the rack by moving loaded cars on the outound.
+        Any cars not in a daily schedule are stored on the storage track.
+        Policy requires a marshalling track for each set and a storage track.
+        It does not consider future periods/days (myopic).
+
+    Attributes:
+        rail_yard: the reference to the rail yard
+        inbound: the inbound track
+        outbound: the outbound track
+        racks: the loading racks
+        marshalling_tracks: the marshalling tracks to sort by set (need one for each set)
+        storage_track: a track for cars not on the daily loading schedule 
+    """
+
+    def __init__(self, rail_yard, inbound, outbound, racks, marshalling_tracks, storage_track):
+        self.rail_yard = rail_yard
+        self.inbound = inbound
+        self.outbound = outbound
+        self.racks = racks
+        self.marshalling_tracks = marshalling_tracks
+        self.storage_track = storage_track
+
+    def next_action(self):
+        #step 1: sort cars by set on the marshalling tracks, move any not to be loaded to the storage track
+
+        #step 2: load the next set by moving max number of cars under each rack from marshalling track
+                
+        #step 3: free up racks by moving set to outbound and repeat step 2 if have more sets
+        pass
+
 #Main
 rail_yard = RailYardEnv2()
 rail_yard.reset()
@@ -389,7 +450,7 @@ print("Loading Schedule:")
 print(str(rail_yard.loading_schedule) + "\n")
 rail_yard.render()
 #ss = SimpleOneByOnePolicyAgent(rail_yard)
-policy = SimpleTrainSortPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
+policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
 done = False
 while not done:
     action = policy.next_action()
