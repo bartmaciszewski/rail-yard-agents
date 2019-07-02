@@ -56,6 +56,9 @@ class RailYardEnv2(gym.Env):
         for j in range(2,4):
             self.cars.append(RailCar("d" + str(j+1),EMPTY, PRODUCTS["DIESEL"]))
             self.inbound.push(self.cars[j])
+
+        #Create locomotive
+        self.loco = Locomotive()
         
         #Build load schedule
         self.loading_schedule = LoadingSchedule()
@@ -299,10 +302,38 @@ class Rack(Track):
     def derail_up(self):
         return self.is_loading
 
+class Locomotive:
+    """An engine that can pull cars from track to track
+    """
+    def __init__(self):
+        self.active = False
+
+    def move_cars(self, tracks, source_track, destination_track, num_cars):
+        self.path = self.shortest_path(len(tracks), tracks, source_track, destination_track, num_cars)
+        self.current_hop = 0
+        self.active = True
+
+    def shortest_path(self, max_hops, tracks, source_track, destination_track, num_cars):
+        if destination_track.ID == 1:
+            #destination is the lead track
+            return [(source_track.ID, destination_track.ID, num_cars)]
+        else:
+            #first hop is the source to lead then lead to destination
+            return [(source_track.ID, 1, num_cars), (1, destination_track.ID, num_cars)]    
+
+    def is_active(self):
+        return self.active
+    
+    def next_hop(self):
+        hop = self.path[self.current_hop]
+        self.current_hop += 1
+        if self.current_hop == len(self.path):
+            self.active = False
+        return hop
+
 class LoadingSchedule:
     """A list of tuples that represents the rail cars and products that need to be loaded for a given set on a given day
     """
-    
     def __init__(self):
         self.loading_schedule = [[]]
         self.cars = [[]] 
@@ -374,38 +405,53 @@ class MyopicGreedySortByProductPolicy(RailyardPolicy):
         self.outbound = outbound
         self.racks = racks
         self.marshalling_tracks = marshalling_tracks
+        self.loco = rail_yard.loco
 
     def next_action(self):
-        #are there any racks that can be freed up?
-        for rack in self.racks.values():
-            if not rack.is_currently_loading() and not rack.is_empty():
-                #move the maximum number of cars from the rack finished loading to the outbound
-                return self.rail_yard.encode_action(rack.ID, self.outbound.ID, min(rack.number_of_cars(), self.outbound.number_of_empty_spots()))
+        
+        if self.loco.is_active():
+            next_hop = self.loco.next_hop()
+            return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
+        else:
+            #are there any racks that can be freed up?
+            for rack in self.racks.values():
+                if not rack.is_currently_loading() and not rack.is_empty():
+                    #move the maximum number of cars from the rack finished loading to the outbound
+                    #return self.rail_yard.encode_action(rack.ID, self.outbound.ID, min(rack.number_of_cars(), self.outbound.number_of_empty_spots()))
+                    self.loco.move_cars(self.rail_yard.tracks, rack, self.outbound, min(rack.number_of_cars(), self.outbound.number_of_empty_spots()))
+                    next_hop = self.loco.next_hop()
+                    return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
 
-        #are there any cars ready on the marshalling track that can be loaded?
-        for marshalling_track1 in self.marshalling_tracks:
-            if not marshalling_track1.is_empty():
-                #are there any empty racks that can load this product
-                for rack2 in self.racks.values():
-                    if rack2.is_empty() and rack2.product == marshalling_track1.cars[0].product:
-                        #move the maximum number of cars from the marshalling track to the rack
-                        return self.rail_yard.encode_action(marshalling_track1.ID, rack2.ID, min(marshalling_track1.number_of_cars(), rack2.number_of_empty_spots()))
+            #are there any cars ready on the marshalling track that can be loaded?
+            for marshalling_track1 in self.marshalling_tracks:
+                if not marshalling_track1.is_empty():
+                    #are there any empty racks that can load this product
+                    for rack2 in self.racks.values():
+                        if rack2.is_empty() and rack2.product == marshalling_track1.cars[0].product:
+                            #move the maximum number of cars from the marshalling track to the rack
+                            #return self.rail_yard.encode_action(marshalling_track1.ID, rack2.ID, min(marshalling_track1.number_of_cars(), rack2.number_of_empty_spots()))
+                            self.loco.move_cars(self.rail_yard.tracks, marshalling_track1, rack2, min(marshalling_track1.number_of_cars(), rack2.number_of_empty_spots()))
+                            next_hop = self.loco.next_hop()
+                            return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
 
-        #are there any inbound cars left to sort by produc?
-        if not self.inbound.is_empty():
-            for marshalling_track2 in self.marshalling_tracks:
-                #make sure the marshalling track has space and is intended for the product avaible at the top of the inbound
-                if not marshalling_track2.is_full() and self.inbound.peek().product == marshalling_track2.product:
-                    #count how many cars of the same product are at the top of track available to pull
-                    count_same_product = 0
-                    last_product = self.inbound.peek().product
-                    for car in reversed(self.inbound.cars):
-                        if last_product == car.product:
-                            count_same_product += 1
-                            last_product = car.product
-                        else: 
-                            break
-                    return self.rail_yard.encode_action(self.inbound.ID, marshalling_track2.ID, min(count_same_product, marshalling_track2.number_of_empty_spots()))
+            #are there any inbound cars left to sort by produc?
+            if not self.inbound.is_empty():
+                for marshalling_track2 in self.marshalling_tracks:
+                    #make sure the marshalling track has space and is intended for the product avaible at the top of the inbound
+                    if not marshalling_track2.is_full() and self.inbound.peek().product == marshalling_track2.product:
+                        #count how many cars of the same product are at the top of track available to pull
+                        count_same_product = 0
+                        last_product = self.inbound.peek().product
+                        for car in reversed(self.inbound.cars):
+                            if last_product == car.product:
+                                count_same_product += 1
+                                last_product = car.product
+                            else: 
+                                break
+                        #return self.rail_yard.encode_action(self.inbound.ID, marshalling_track2.ID, min(count_same_product, marshalling_track2.number_of_empty_spots()))
+                        self.loco.move_cars(self.rail_yard.tracks, self.inbound, marshalling_track2, min(count_same_product, marshalling_track2.number_of_empty_spots()))
+                        next_hop = self.loco.next_hop()
+                        return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
 
         return DO_NOTHING_ACTION
 
