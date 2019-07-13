@@ -321,6 +321,7 @@ class Locomotive:
             #first hop is the source to lead then lead to destination
             return [(source_track.ID, 1, num_cars), (1, destination_track.ID, num_cars)]    
 
+
     def is_active(self):
         return self.active
     
@@ -456,12 +457,7 @@ class MyopicGreedySortByProductPolicy(RailyardPolicy):
         return DO_NOTHING_ACTION
 
 class MyopicSortBySetPolicy(RailyardPolicy):
-    """A policy that moves cars to the marshalling tracks by set as the first sorting step.  
-        It then pulls cars from the current set marshalling track under the correct rack and loads.
-        Lastly it frees up the rack by moving loaded cars on the outound.
-        Any cars not in a daily schedule are stored on the storage track.
-        Policy requires a marshalling track for each set and a storage track.
-        It does not consider future periods/days (myopic).
+    """A policy that loads cars and puts them on the outbound one set at a time
 
     Attributes:
         rail_yard: the reference to the rail yard
@@ -469,24 +465,46 @@ class MyopicSortBySetPolicy(RailyardPolicy):
         outbound: the outbound track
         racks: the loading racks
         marshalling_tracks: the marshalling tracks to sort by set (need one for each set)
-        storage_track: a track for cars not on the daily loading schedule 
     """
-
-    def __init__(self, rail_yard, inbound, outbound, racks, marshalling_tracks, storage_track):
+    def __init__(self, rail_yard, inbound, outbound, racks, marshalling_tracks):
         self.rail_yard = rail_yard
         self.inbound = inbound
         self.outbound = outbound
         self.racks = racks
         self.marshalling_tracks = marshalling_tracks
-        self.storage_track = storage_track
+        self.loco = rail_yard.locomotive
+        self.num_sets = rail_yard.loading_schedule.number_of_sets()
+        self.current_set = 1
 
     def next_action(self):
-        #step 1: sort cars by set on the marshalling tracks, move any not to be loaded to the storage track
+        if self.loco.is_active():
+            next_hop = self.loco.next_hop()
+            return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
+        else:
+            if self.current_set <= self.num_sets:                            
+                #step 1: move the largest group of cars in the set from inbound to outbound
+                cars_to_move = 0
+                found_car_in_set = False
+                for car in self.inbound.get_cars():
+                    #if the car is in the set then move it and keep looking at the rest of cars
+                    if car in self.rail_yard.loading_schedule.get_cars(self.current_set):
+                        found_car_in_set = True
+                        cars_to_move += 1
+                    #car we are looking at is not in set but we have already found one then we should move all cars prior to this one
+                    elif found_car_in_set:
+                        self.loco.move_cars(self.rail_yard.tracks, self.inbound, self.marshalling_tracks[0], cars_to_move)
+                        next_hop = self.loco.next_hop()
+                        return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
+                    #car is not in set and we haven’t found one yet so keep on looking
+                    else:
+                        cars_to_move += 1
 
-        #step 2: load the next set by moving max number of cars under each rack from marshalling track
-                
-        #step 3: free up racks by moving set to outbound and repeat step 2 if have more sets
-        pass
+                #step 2: move each car for the set under the correct rack
+
+
+                #step 3: move loaded cars from rack to outbound
+
+        self.current_set += 1
 
 #Main
 rail_yard = RailYardEnv2()
