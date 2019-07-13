@@ -514,10 +514,19 @@ print("Loading Schedule:")
 print(str(rail_yard.loading_schedule) + "\n")
 rail_yard.render()
 #ss = SimpleOneByOnePolicyAgent(rail_yard)
-policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
+#policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
 done = False
 while not done:
-    action = policy.next_action()
+    #action = policy.next_action()
+    from_track = int(input("From track: "))
+    to_track = int(input("To track: "))
+    num_cars = int(input("Number of cars: "))
+    if from_track is None or to_track is None or num_cars is None:
+        action = DO_NOTHING_ACTION
+    else:    
+        action = rail_yard.encode_action(from_track, to_track, num_cars)
+        if action not in rail_yard.action_space.available_actions:
+            action = DO_NOTHING_ACTION #user chose an unavailable action
     #observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
     observation, reward, done, info = rail_yard.step(action)
     rail_yard.render()
