@@ -15,6 +15,9 @@ SWITCH_POS_A = 0
 SWITCH_POS_B = 1
 PRODUCTS = {"MOGAS" : "M", "DIESEL" : "D", "JET" : "J", "ASPHALT" : "A"}
 
+# Dimensions of the map
+MAP_WIDTH, MAP_HEIGHT = 24, 24
+
 class RailYardEnv2(gym.Env):
     metadata = {'render.modes': ['human']}
         
@@ -239,6 +242,8 @@ class Track:
         self.connected_tracks.append(track)
         track.connected_tracks.append(self)
 
+"""
+"NOT USED"
 #A switch is a track of size 1, track C diverges from the A and B straight ahead
 class Switch(Track):
     def __init__(self, track_A, track_B, track_C):
@@ -251,6 +256,7 @@ class Switch(Track):
     #throw the switch to either A or B position
     def switch(self, switch_pos):
         self.A_B = switch_pos
+"""
 
 class MarshallingTrack(Track):
     """A track that is designated for a specific product.
@@ -457,7 +463,10 @@ class MyopicGreedySortByProductPolicy(RailyardPolicy):
         return DO_NOTHING_ACTION
 
 class MyopicSortBySetPolicy(RailyardPolicy):
-    """A policy that loads cars and puts them on the outbound one set at a time
+    """
+    UNDER DEVELOPMENT
+
+    A policy that loads cars and puts them on the outbound one set at a time
 
     Attributes:
         rail_yard: the reference to the rail yard
@@ -482,7 +491,7 @@ class MyopicSortBySetPolicy(RailyardPolicy):
             return self.rail_yard.encode_action(next_hop[0], next_hop[1], next_hop[2])
         else:
             if self.current_set <= self.num_sets:                            
-                #step 1: move the largest group of cars in the set from inbound to outbound
+                #step 1: move the largest group of cars in the set from inbound to outbound - UNDER DEVELOPMENT
                 cars_to_move = 0
                 found_car_in_set = False
                 for car in self.inbound.get_cars():
@@ -499,37 +508,41 @@ class MyopicSortBySetPolicy(RailyardPolicy):
                     else:
                         cars_to_move += 1
 
-                #step 2: move each car for the set under the correct rack
+                #step 2: move each car for the set under the correct rack - UNDER DEVELOPMENT
 
-
-                #step 3: move loaded cars from rack to outbound
+                #step 3: move loaded cars from rack to outbound - UNDER DEVELOPMENT
 
         self.current_set += 1
 
-#Main
-rail_yard = RailYardEnv2()
-rail_yard.reset()
-print("\nStarting game...\n")
-print("Loading Schedule:")
-print(str(rail_yard.loading_schedule) + "\n")
-rail_yard.render()
-#ss = SimpleOneByOnePolicyAgent(rail_yard)
-#policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
-done = False
-while not done:
-    #action = policy.next_action()
-    
-    #get input from user
-    from_track = input("From track: ")
-    to_track = input("To track: ")
-    num_cars = input("Number of cars: ")
-    if from_track == "" or to_track  == "" or num_cars == "" :
-        action = DO_NOTHING_ACTION
-    else:    
-        action = rail_yard.encode_action(int(from_track), int(to_track), int(num_cars))
-        if action not in rail_yard.action_space.available_actions:
-            action = DO_NOTHING_ACTION #user chose an unavailable action
-    
-    #observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
-    observation, reward, done, info = rail_yard.step(action)
+def main():
+    """ Main 
+    """
+    rail_yard = RailYardEnv2()
+    rail_yard.reset()
+    print("\nStarting game...\n")
+    print("Loading Schedule:")
+    print(str(rail_yard.loading_schedule) + "\n")
     rail_yard.render()
+    #ss = SimpleOneByOnePolicyAgent(rail_yard)
+    #policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
+    done = False
+    while not done:
+        #action = policy.next_action()
+        
+        #get input from user
+        from_track = input("From track: ")
+        to_track = input("To track: ")
+        num_cars = input("Number of cars: ")
+        if from_track == "" or to_track  == "" or num_cars == "" :
+            action = DO_NOTHING_ACTION
+        else:    
+            action = rail_yard.encode_action(int(from_track), int(to_track), int(num_cars))
+            if action not in rail_yard.action_space.available_actions:
+                action = DO_NOTHING_ACTION #user chose an unavailable action
+        
+        #observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
+        observation, reward, done, info = rail_yard.step(action)
+        rail_yard.render()
+
+if __name__ == '__main__':
+    main()
