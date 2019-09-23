@@ -36,7 +36,13 @@ class RailYardGymEnv(gym.Env):
                                                                         NUMBER_OF_SETS,  #which set for loading
                                                                         len(PRODUCTS)])  #which product to load
                                                for n in range(NUMBER_OF_CARS)})
-       
+        #self.observation_space = spaces.MultiDiscrete([NUMBER_OF_CARS,   #which car
+        #                                            NUMBER_OF_TRACKS,  #which track
+        #                                            MAX_TRACK_LENGTH,  #which position
+        #                                            2,  #loaded or not
+        #                                            NUMBER_OF_SETS,  #which set for loading
+        #                                            len(PRODUCTS)])  #which product to load
+                                               
     def reset(self):
         self.period = 0
 
@@ -117,7 +123,7 @@ class RailYardGymEnv(gym.Env):
 
         self.period += 1
         
-        return current_observation(), reward, done, None
+        return self.current_observation(), reward, done, None
     
     def is_success_state(self):
         """Returns True if we have loaded all the required cars and moved them to the outbound track."""
@@ -151,20 +157,19 @@ class RailYardGymEnv(gym.Env):
     def current_observation(self):
         """
             Returns the current state observation of the yard (essentially the state of each car)
-            i.e. a dictionary of tuples for each car of the form:
-            (track, position on track, loaded or empty, set number and product if on loading schedule)
+            (car, track, position on track, loaded or empty, set number and product if on loading schedule)
         """
         observation = {}
-        for track in self.tracks:
+        for track in self.tracks.values():
             car_position = 0
             for car in track.get_cars():
-                for set in self.loading_schedule.number_of_sets():
+                for set in range(self.loading_schedule.number_of_sets()):
                     for product in PRODUCTS.values():
                         if self.loading_schedule.is_on_schedule(set, car, product) == True:
-                            observation[car] = [track.ID, car_position, car.empty_or_full, set, product]
+                            observation[car.ID] = [track.ID, car_position, car.empty_or_full, set, product]
                         else:
-                            observation[car] = [track.ID, car_position, car.empty_or_full, 0, 0]
-                car_count += 1
+                            observation[car.ID] = [track.ID, car_position, car.empty_or_full, 0, 0]
+                car_position += 1
 
         return observation
 
@@ -266,7 +271,10 @@ class Track:
 
     def number_of_cars(self):
         return len(self.cars)
- 
+
+    def get_cars(self):
+        return self.cars
+
     def number_of_empty_spots(self):
         return self.length - self.number_of_cars()
 
