@@ -16,7 +16,7 @@ OUTBOUND_TRACK_ID = 7
 DO_NOTHING_ACTION = 0
 SWITCH_POS_A = 0
 SWITCH_POS_B = 1
-PRODUCTS = {"MOGAS" : "M", "DIESEL" : "D", "JET" : "J", "ASPHALT" : "A"}
+PRODUCTS = {0 : "M", 1 : "D", 2 : "J", 4 : "A"}
 
 # Dimensions of the map
 MAP_WIDTH, MAP_HEIGHT = 24, 24
@@ -30,12 +30,14 @@ class RailYardGymEnv(gym.Env):
         self.action_space = DiscreteDynamic(NUMBER_OF_TRACKS*NUMBER_OF_TRACKS*NUMBER_OF_CARS)
         
         #state is the location and state of each rail car
-        self.observation_space = spaces.Dict({str(n): spaces.MultiDiscrete([NUMBER_OF_TRACKS,  #which track
-                                                                        MAX_TRACK_LENGTH,  #which position
-                                                                        2,  #loaded or not
-                                                                        NUMBER_OF_SETS,  #which set for loading
-                                                                        len(PRODUCTS)])  #which product to load
-                                               for n in range(NUMBER_OF_CARS)})
+        self.observation_space = RailCarTuplesSpace()
+        #self.observation_space = spaces.Tuple([spaces.Tuple((spaces.Discrete(NUMBER_OF_TRACKS),  #which track
+        #                                        spaces.Discrete(MAX_TRACK_LENGTH),  #which position
+        #                                        spaces.Discrete(2),  #loaded or not
+        #                                        spaces.Discrete(NUMBER_OF_SETS),  #which set for loading
+        #                                        spaces.Discrete(len(PRODUCTS))))  #which product to load
+        #                                       for _ in range(NUMBER_OF_CARS)])
+        #print(self.observation_space.sample())
         #self.observation_space = spaces.MultiDiscrete([NUMBER_OF_CARS,   #which car
         #                                            NUMBER_OF_TRACKS,  #which track
         #                                            MAX_TRACK_LENGTH,  #which position
@@ -49,10 +51,10 @@ class RailYardGymEnv(gym.Env):
         #Create tracks
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.marshalling_track1 = MarshallingTrack(3,5,PRODUCTS["MOGAS"])
-        self.marshalling_track2 = MarshallingTrack(4,5,PRODUCTS["DIESEL"])
-        self.rack1 = Rack(5,2,PRODUCTS["MOGAS"],2)
-        self.rack2 = Rack(6,2,PRODUCTS["DIESEL"],2)    
+        self.marshalling_track1 = MarshallingTrack(3,5,PRODUCTS[0])
+        self.marshalling_track2 = MarshallingTrack(4,5,PRODUCTS[1])
+        self.rack1 = Rack(5,2,PRODUCTS[0],2)
+        self.rack2 = Rack(6,2,PRODUCTS[1],2)    
         self.outbound = Track(7,5)
 
         #Connect tracks to form network
@@ -72,10 +74,10 @@ class RailYardGymEnv(gym.Env):
         #Create cars
         self.cars = []
         for i in range(2):
-            self.cars.append(RailCar("m" + str(i+1),EMPTY, PRODUCTS["MOGAS"]))
+            self.cars.append(RailCar(i,"m" + str(i+1),EMPTY, PRODUCTS[0]))
             self.inbound.push(self.cars[i])
         for j in range(2,4):
-            self.cars.append(RailCar("d" + str(j+1),EMPTY, PRODUCTS["DIESEL"]))
+            self.cars.append(RailCar(j,"d" + str(j+1),EMPTY, PRODUCTS[1]))
             self.inbound.push(self.cars[j])
 
         #Create locomotive
@@ -88,10 +90,12 @@ class RailYardGymEnv(gym.Env):
         self.loading_schedule.add_to_schedule(2, self.cars[3], self.cars[3].product)
         
         #build initial action space
-        self.action_space.available_actions = self.possible_actions()
+        #self.action_space.available_actions = self.possible_actions()
 
         #build initial state
-        self.observation_space = self.current_observation()
+        #self.observation_space = self.current_observation()
+
+        return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule)
 
     def step(self,action):
         """Follow an action to transition to the next state of the yard."""
@@ -123,7 +127,7 @@ class RailYardGymEnv(gym.Env):
 
         self.period += 1
         
-        return self.current_observation(), reward, done, None
+        return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), reward, done, None
     
     def is_success_state(self):
         """Returns True if we have loaded all the required cars and moved them to the outbound track."""
@@ -153,26 +157,7 @@ class RailYardGymEnv(gym.Env):
                         for num_cars_to_move in range(min(source_track.number_of_cars(), destination_track.number_of_empty_spots())):
                             actions.append(self.encode_action(source_track.ID, destination_track.ID, num_cars_to_move + 1)) #encode action to move k cars
         return actions
-
-    def current_observation(self):
-        """
-            Returns the current state observation of the yard (essentially the state of each car)
-            (car, track, position on track, loaded or empty, set number and product if on loading schedule)
-        """
-        observation = {}
-        for track in self.tracks.values():
-            car_position = 0
-            for car in track.get_cars():
-                for set in range(self.loading_schedule.number_of_sets()):
-                    for product in PRODUCTS.values():
-                        if self.loading_schedule.is_on_schedule(set, car, product) == True:
-                            observation[car.ID] = [track.ID, car_position, car.empty_or_full, set, product]
-                        else:
-                            observation[car.ID] = [track.ID, car_position, car.empty_or_full, 0, 0]
-                car_position += 1
-
-        return observation
-
+ 
     #encode an action to move cars from one track to another as an intetger
     def encode_action(self, source_track, destination_track, num_cars):
         i = source_track - 1
@@ -204,6 +189,7 @@ class RailYardGymEnv(gym.Env):
                 sys.stdout.write("Track " + str(track) + "\n")
         sys.stdout.write("\n")
 
+
 class DiscreteDynamic(gym.spaces.Discrete):
     
     def __init__(self, max_space):
@@ -232,8 +218,67 @@ class DiscreteDynamic(gym.spaces.Discrete):
     def shape(self):
         return ()
 
+
+class RailCarTuplesSpace(gym.spaces.Tuple):
+    """
+    An observation space that represents the rail yard state as a tuple of tuples for each rail car.
+    """
+   
+    def __init__(self):
+        """
+        Creates a new observation space as a set of tuples for all cars
+        """
+        super(RailCarTuplesSpace, self).__init__([spaces.Tuple((spaces.Discrete(NUMBER_OF_TRACKS),  #which track
+                                                spaces.Discrete(MAX_TRACK_LENGTH),  #which position
+                                                spaces.Discrete(2),  #loaded or not
+                                                spaces.Discrete(NUMBER_OF_SETS),  #which set for loading
+                                                spaces.Discrete(len(PRODUCTS))))  #which product to load
+                                                for _ in range(NUMBER_OF_CARS)])
+   
+    def current_observation(self, cars, tracks, loading_schedule):
+        """
+        Represents the current state of the yard as a tuple of tuples for each car
+        
+        Args:
+            cars : List of rail cars in the yard
+            tracks : A Dictionary of all the tracks in the yard
+            loading_schedule : The loading schedule
+
+        Returns:
+            ( (track, position on track, loaded or empty, set number and product if on loading schedule),
+            ...
+            (...,...,...,...) )
+        """
+    
+        observation = [None]*len(cars)
+        #for each car on each track
+        for track in tracks.values():
+            
+            car_position = 0
+            for car in track.get_cars():
+
+                #determine the set and product if on load schedule
+                found_car_on_schedule = False
+                for set in range(loading_schedule.number_of_sets()):
+                    for product in PRODUCTS.keys():
+                
+                        #car is on schedule so add the set and product to the observation
+                        if loading_schedule.is_on_set_schedule(car, set+1, PRODUCTS[product]) == True:
+                            observation[car.ID] = (track.ID, car_position, car.empty_or_full, set+1, product)
+                            found_car_on_schedule = True
+                
+                #car is not on schedule so
+                if found_car_on_schedule == False:
+                    observation[car.ID] = (track.ID, car_position, car.empty_or_full, 0, 0)
+                
+                car_position += 1
+
+        return tuple(observation)
+
+
 class RailCar:
-    def __init__(self, ID, empty_full, product):
+    def __init__(self, ID, number, empty_full, product):
+        self.number = number
         self.ID = ID
         self.empty_or_full = empty_full
         self.product = product
@@ -243,9 +288,9 @@ class RailCar:
 
     def __str__(self):
         if self.empty_or_full == EMPTY:
-            return self.ID.lower()
+            return self.number.lower()
         else:
-            return self.ID.capitalize()
+            return self.number.capitalize()
 
 class Track:
     def __init__(self, ID, length):
@@ -402,8 +447,8 @@ class LoadingSchedule:
     def get_cars(self,set):
         return self.cars[set - 1]
     
-    def is_on_schedule(self, set, car, product):
-        for car_product in self.loading_schedule[set - 1]:
+    def is_on_set_schedule(self, car, set, product):
+        for car_product in self.loading_schedule[set-1]:
             if car_product[0] == car and car_product[1] == product:
                 return True
         return False
@@ -416,7 +461,7 @@ class LoadingSchedule:
         for i in range(len(self.loading_schedule)):
             print_string += "Set: " + str(i+1) + "\n"
             for car_product in self.loading_schedule[i]:
-                print_string += "Car: " + car_product[0].ID + " Product:" + car_product[1] + "\n"
+                print_string += "Car: " + car_product[0].number + " Product:" + car_product[1] + "\n"
         return print_string
 
 class RailyardPolicy:
