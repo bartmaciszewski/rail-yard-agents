@@ -352,7 +352,6 @@ class RailCarBoxSpace(gym.spaces.Box):
                 
                 car_position += 1
 
-        print(np.array(observation))
         return np.array(observation)
 
 
