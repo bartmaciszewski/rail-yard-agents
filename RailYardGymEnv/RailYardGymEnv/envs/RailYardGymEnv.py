@@ -18,6 +18,13 @@ SWITCH_POS_A = 0
 SWITCH_POS_B = 1
 PRODUCTS = {0 : "M", 1 : "D", 2 : "J", 4 : "A"}
 
+#Rewards
+NEGATIVE_STEP_REWARD = -10
+EPISODE_SUCCESS_REWARD = 1000
+
+#Time limit for each loading day
+MAX_NUMBER_OF_PERIODS = 100
+
 # Dimensions of the map
 MAP_WIDTH, MAP_HEIGHT = 24, 24
 
@@ -30,7 +37,8 @@ class RailYardGymEnv(gym.Env):
         self.action_space = DiscreteDynamic(NUMBER_OF_TRACKS*NUMBER_OF_TRACKS*NUMBER_OF_CARS)
         
         #state is the location and state of each rail car
-        self.observation_space = RailCarTuplesSpace()
+        self.observation_space = RailCarBoxSpace()
+        #self.observation_space = RailCarTuplesSpace()
         #self.observation_space = spaces.Tuple([spaces.Tuple((spaces.Discrete(NUMBER_OF_TRACKS),  #which track
         #                                        spaces.Discrete(MAX_TRACK_LENGTH),  #which position
         #                                        spaces.Discrete(2),  #loaded or not
@@ -89,18 +97,25 @@ class RailYardGymEnv(gym.Env):
         self.loading_schedule.add_to_schedule(1, self.cars[2], self.cars[2].product)
         self.loading_schedule.add_to_schedule(2, self.cars[3], self.cars[3].product)
         
-        #build initial action space
-        #self.action_space.available_actions = self.possible_actions()
-
-        #build initial state
-        #self.observation_space = self.current_observation()
-
+        #build initial action space for this starting yard configuration
+        self.action_space.available_actions = self.possible_actions()
+        
         return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule)
 
-    def step(self,action):
+    def step(self, action):
         """Follow an action to transition to the next state of the yard."""
+        done = False
 
-        #step 1: continue loading any racks
+        #step 1: check if we have ran out of time
+        if self.period == MAX_NUMBER_OF_PERIODS:
+            done = True
+            return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+
+        #step 2: ignore the action if not valid in this state
+        if not self.action_space.contains(action):
+            return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+
+        #step 3: continue loading any racks
         for rack in self.racks.values():
             if rack.is_currently_loading():
                 rack.load_step()
@@ -108,22 +123,22 @@ class RailYardGymEnv(gym.Env):
         if action != DO_NOTHING_ACTION:
             decoded_action = self.decode_action(action)
         
-            #step 2: switch i cars from source to destination track
+            #step 3: switch i cars from source to destination track
             for i in range(decoded_action[2]):
                 self.tracks[decoded_action[1]].push(self.tracks[decoded_action[0]].pop())
         
-            #step 3: start loading if the destination was a rack
+            #step 4: start loading if the destination was a rack
             if isinstance(self.tracks[decoded_action[1]],Rack):
                 self.tracks[decoded_action[1]].start_load()
 
-        #step 4: determine the next possible actions from this new state
+        #step 5: determine the next possible actions from this new state
         self.action_space.available_actions = self.possible_actions()
 
         #have we moved all the cars to the outbound track?
         done = self.is_success_state() 
 
         #reward completion of the game and penalize every move
-        reward = -10 if not done else 1000
+        reward = NEGATIVE_STEP_REWARD if not done else EPISODE_SUCCESS_REWARD
 
         self.period += 1
         
@@ -193,10 +208,9 @@ class RailYardGymEnv(gym.Env):
 class DiscreteDynamic(gym.spaces.Discrete):
     
     def __init__(self, max_space):
-        self.n = max_space
-
         #initially all actions are available
         self.available_actions = range(0, max_space)
+        super(DiscreteDynamic, self).__init__(max_space)
 
     def disable_actions(self, actions):
         self.available_actions = [action for action in self.available_actions if action not in actions]
@@ -214,9 +228,9 @@ class DiscreteDynamic(gym.spaces.Discrete):
     def contains(self, x):
         return x in self.available_actions
 
-    @property
-    def shape(self):
-        return ()
+    #@property
+    #def shape(self):
+    #    return ()
 
 
 class RailCarTuplesSpace(gym.spaces.Tuple):
@@ -274,6 +288,72 @@ class RailCarTuplesSpace(gym.spaces.Tuple):
                 car_position += 1
 
         return tuple(observation)
+
+
+
+class RailCarBoxSpace(gym.spaces.Box):
+    """
+    An observation space that represents the rail yard state as a 2 dimensional array
+    with a row for each car that has its track, position, load state, and whether
+    it was on the schedule.
+    """
+
+    def __init__(self):
+        """
+        Creates a new observation space as a 2 dimensional box of size (# cars, # variables about each car)
+        """
+        self.NUM_CAR_VARIABLES = 5
+        self.MAX_CAR_VARIABLE_VALUE = max(MAX_TRACK_LENGTH, NUMBER_OF_CARS, NUMBER_OF_CARS, NUMBER_OF_SETS, NUMBER_OF_TRACKS, len(PRODUCTS))
+        super(RailCarBoxSpace, self).__init__(0,self.MAX_CAR_VARIABLE_VALUE, [NUMBER_OF_CARS, self.NUM_CAR_VARIABLES], dtype=np.int32)
+                                               
+    def current_observation(self, cars, tracks, loading_schedule):
+        """
+        Represents the current state of the yard as a 2 dimensional box with info for each car as a row of ints
+        
+        Args:
+            cars : List of rail cars in the yard
+            tracks : A Dictionary of all the tracks in the yard
+            loading_schedule : The loading schedule
+
+        Returns:
+            ( (track, position on track, loaded or empty, set number and product if on loading schedule),
+            ...
+            (...,...,...,...) )
+        """
+    
+        observation = [[None]*self.NUM_CAR_VARIABLES for _ in range(len(cars))]
+        #for each car on each track
+        for track in tracks.values():
+            
+            car_position = 0
+            for car in track.get_cars():
+
+                #determine the set and product if on load schedule
+                found_car_on_schedule = False
+                for set in range(loading_schedule.number_of_sets()):
+                    for product in PRODUCTS.keys():
+          
+                        #car is on schedule so add the set and product to the observation
+                        if loading_schedule.is_on_set_schedule(car, set+1, PRODUCTS[product]) == True:
+                            observation[car.ID][0] = track.ID
+                            observation[car.ID][1] = car_position
+                            observation[car.ID][2] = car.empty_or_full
+                            observation[car.ID][3] = set+1
+                            observation[car.ID][4] = product
+                            found_car_on_schedule = True
+                
+                #car is not on schedule so
+                if found_car_on_schedule == False:
+                    observation[car.ID][0] = track.ID
+                    observation[car.ID][1] = car_position
+                    observation[car.ID][2] = car.empty_or_full
+                    observation[car.ID][3] = 0
+                    observation[car.ID][4] = 0                
+                
+                car_position += 1
+
+        print(np.array(observation))
+        return np.array(observation)
 
 
 class RailCar:
