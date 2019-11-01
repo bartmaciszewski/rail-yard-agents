@@ -82,13 +82,36 @@ def collect_data(env, policy, buffer, steps):
     for _ in range(steps):
         collect_step(env, policy, buffer)
 
+def create_policy_eval_text_log(policy, filename, num_episodes=5):
+    logfile = open(filename + ".txt","w")
+    for _ in range(num_episodes):
+        time_step = eval_env.reset()
+        logfile.write(eval_py_env.render())
+        while not time_step.is_last():
+            action_step = policy.action(time_step)
+            time_step = eval_env.step(action_step.action)
+            logfile.write("=============================\n")
+            logfile.write("Action: " + str(eval_py_env.decode_action(action_step.action.numpy()[0])) + "\n")
+            logfile.write(eval_py_env.render())
+
+
+def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
+    filename = filename + ".mp4"
+    with imageio.get_writer(filename, fps=fps) as video:
+        for _ in range(num_episodes):
+            time_step = eval_env.reset()
+            video.append_data(eval_py_env.render())
+            while not time_step.is_last():
+                action_step = policy.action(time_step)
+                time_step = eval_env.step(action_step.action)
+                video.append_data(eval_py_env.render())
+
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 10 #number of training iterations (e.g. play a number of steps and then train) 
-#initial_collect_steps = 1000 
-collect_steps_per_iteration = 1000 #how many steps to play in each training iteration
-replay_buffer_max_length = 100000
+num_iterations = 1 #number of training iterations (e.g. play a number of steps and then train) 
+collect_steps_per_iteration = 5 #how many steps to play in each training iteration
+replay_buffer_max_length = 10000
 batch_size = 64
 learning_rate = 1e-3
 log_interval = 1 
@@ -144,10 +167,6 @@ agent = dqn_agent.DqnAgent(
     train_step_counter=train_step_counter)
 agent.initialize()
 
-# Policies to train and evaluate the performance of the agent
-collect_policy = agent.collect_policy
-eval_policy = agent.policy
-
 # A buffer to stores the experience from interacting with the environment
 replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
     data_spec=agent.collect_data_spec,
@@ -177,6 +196,8 @@ for _ in range(num_iterations):
   # Collect a few steps using collect_policy and save to the replay buffer.
   for _ in range(collect_steps_per_iteration):
     collect_step(train_env, agent.collect_policy, replay_buffer)
+    if train_env.current_time_step().is_last():
+        train_env.reset()
 
   # Sample a batch of data from the buffer and update the agent's network.
   experience, unused_info = next(iterator)
@@ -191,3 +212,12 @@ for _ in range(num_iterations):
     avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
+
+iterations = range(0, num_iterations + 1, eval_interval)
+plt.plot(iterations, returns)
+plt.ylabel('Average Return')
+plt.xlabel('Iterations')
+plt.ylim(top=1000,bottom=-10000)
+
+create_policy_eval_text_log(agent.policy, "trained-agent")
+#create_policy_eval_video(agent.policy, "trained-agent")

@@ -196,13 +196,17 @@ class RailYardGymEnv(gym.Env):
         return list(reversed(out))
 
     def render(self,mode="human"):
-        sys.stdout.write("Period: " + str(self.period) + "\n")
+        output = "Period: " + str(self.period) + "\n"
+        #sys.stdout.write("Period: " + str(self.period) + "\n")
         for track in self.tracks.values():
             if isinstance(track, Rack):
-                sys.stdout.write("Rack " + str(track) + "\n")
+                #sys.stdout.write("Rack " + str(track) + "\n")
+                output += "Rack " + str(track) + "\n"
             else:
-                sys.stdout.write("Track " + str(track) + "\n")
-        sys.stdout.write("\n")
+                #sys.stdout.write("Track " + str(track) + "\n")
+                output += "Track " + str(track) + "\n"
+        #sys.stdout.write("\n")
+        return output
 
 
 class DiscreteDynamic(gym.spaces.Discrete):
