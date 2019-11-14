@@ -33,8 +33,8 @@ class RailYardGymEnv(gym.Env):
         
     def __init__(self):
         
-        #actions are backwad and forward       
-        self.action_space = DiscreteDynamic(NUMBER_OF_TRACKS*NUMBER_OF_TRACKS*NUMBER_OF_CARS)
+        #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
+        self.action_space = DiscreteDynamic(NUMBER_OF_TRACKS*NUMBER_OF_TRACKS*NUMBER_OF_CARS+1)
         
         #state is the location and state of each rail car
         self.observation_space = RailCarBoxSpace()
@@ -167,7 +167,7 @@ class RailYardGymEnv(gym.Env):
         actions.append(DO_NOTHING_ACTION)
         for source_track in self.tracks.values(): #for each track in the rail yard
             for destination_track in source_track.connected_tracks: #for all the connected tracks
-                if not source_track.derail_up() and not destination_track.derail_up(): #don’t move any cars to/from loading racks
+                if not source_track.derail_up() and not destination_track.derail_up(): #don’t move any cars to/from loading racks if derail is up (e.g. loading)
                     if not source_track.is_empty() and not destination_track.is_full(): #check the source track is not empty and destination not full
                         for num_cars_to_move in range(min(source_track.number_of_cars(), destination_track.number_of_empty_spots())):
                             actions.append(self.encode_action(source_track.ID, destination_track.ID, num_cars_to_move + 1)) #encode action to move k cars
@@ -214,6 +214,7 @@ class DiscreteDynamic(gym.spaces.Discrete):
     def __init__(self, max_space):
         #initially all actions are available
         self.available_actions = range(0, max_space)
+        self.max_space = max_space
         super(DiscreteDynamic, self).__init__(max_space)
 
     def disable_actions(self, actions):
@@ -231,6 +232,17 @@ class DiscreteDynamic(gym.spaces.Discrete):
 
     def contains(self, x):
         return x in self.available_actions
+
+    def action_space_mask(self):
+        """Creates a boolean mask for all possible actions in the current state
+
+        Returns:
+            [1,0,1,...] where 1 if the nth action is currently valid and 0 otherwise
+        """
+        mask = [0 for _ in range(0, self.max_space)]
+        for action in self.available_actions:
+            mask[action] = 1
+        return mask
 
     #@property
     #def shape(self):

@@ -82,6 +82,20 @@ def collect_data(env, policy, buffer, steps):
     for _ in range(steps):
         collect_step(env, policy, buffer)
 
+def observation_and_action_constraint_splitter(observation):
+    """Used by DQN agent to constrain the action space based on state. 
+    Uses the current_py_env global variable to get the constrained action space
+
+    Args:
+        observation : the current state tensor returned by the environment
+    Returns:
+        (observation, action_mask) : (the current state tensor to be passed to the Q network, 
+            a bit string where 1 is a valid action in the current state)
+
+    TODO: Derive the mask based on observation rather than leveraging the environment
+    """
+    return observation, current_py_env.action_space.action_space_mask()
+
 def create_policy_eval_text_log(policy, filename, num_episodes=5):
     logfile = open(filename + ".txt","w")
     for _ in range(num_episodes):
@@ -129,6 +143,8 @@ eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
 train_env.reset()
 eval_env.reset()
 
+#py environment used by DQN agent's observation_action_splitter when choosing next action based on state
+current_py_env = train_py_env
 '''
 #Test spaces
 print('Observation Spec:')
@@ -163,6 +179,7 @@ agent = dqn_agent.DqnAgent(
     train_env.action_spec(),
     q_network=q_net,
     optimizer=optimizer,
+    observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
     td_errors_loss_fn=common.element_wise_squared_loss,
     train_step_counter=train_step_counter)
 agent.initialize()
@@ -188,8 +205,11 @@ agent.train = common.function(agent.train)
 agent.train_step_counter.assign(0)
 
 # Evaluate the agent's policy once before training.
+current_py_env = eval_py_env
 avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
 returns = [avg_return]
+
+current_py_env = train_py_env
 
 for _ in range(num_iterations):
 
@@ -209,9 +229,11 @@ for _ in range(num_iterations):
     print('step = {0}: loss = {1}'.format(step, train_loss))
 
   if step % eval_interval == 0:
+    current_py_env = eval_py_env
     avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
     print('step = {0}: Average Return = {1}'.format(step, avg_return))
     returns.append(avg_return)
+    current_py_env = train_py_env
 
 iterations = range(0, num_iterations + 1, eval_interval)
 plt.plot(iterations, returns)
@@ -219,5 +241,6 @@ plt.ylabel('Average Return')
 plt.xlabel('Iterations')
 plt.ylim(top=1000,bottom=-10000)
 
+current_py_env = eval_py_env
 create_policy_eval_text_log(agent.policy, "trained-agent")
 #create_policy_eval_video(agent.policy, "trained-agent")
