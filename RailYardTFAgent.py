@@ -94,7 +94,7 @@ def observation_and_action_constraint_splitter(observation):
 
     TODO: Derive the mask based on observation rather than leveraging the environment
     """
-    return observation, current_py_env.action_space.action_space_mask()
+    return observation, tf.convert_to_tensor(current_py_env.action_space.action_space_mask(),dtype=tf.int32)
 
 def create_policy_eval_text_log(policy, filename, num_episodes=5):
     logfile = open(filename + ".txt","w")
@@ -123,15 +123,15 @@ def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 1 #number of training iterations (e.g. play a number of steps and then train) 
-collect_steps_per_iteration = 5 #how many steps to play in each training iteration
+num_iterations = 100 #number of training iterations (e.g. play a number of steps and then train) 
+collect_steps_per_iteration = 100 #how many steps to play in each training iteration
 replay_buffer_max_length = 10000
-batch_size = 64
+batch_size = 1000
 learning_rate = 1e-3
-log_interval = 1 
+log_interval = 2 
 
 #how many episodes to play to evaluate the agent 
-num_eval_episodes = 1 
+num_eval_episodes = 5 
 eval_interval = 2
 
 #create training and evaluation environment and convert to Tensorflow environments
@@ -180,6 +180,7 @@ agent = dqn_agent.DqnAgent(
     q_network=q_net,
     optimizer=optimizer,
     observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
+    epsilon_greedy=0.5,
     td_errors_loss_fn=common.element_wise_squared_loss,
     train_step_counter=train_step_counter)
 agent.initialize()
