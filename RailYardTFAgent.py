@@ -123,8 +123,8 @@ def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 100 #number of training iterations (e.g. play a number of steps and then train) 
-collect_steps_per_iteration = 100 #how many steps to play in each training iteration
+num_iterations = 20 #number of training iterations (e.g. play a number of steps and then train) 
+collect_steps_per_iteration = 1000 #how many steps to play in each training iteration
 replay_buffer_max_length = 10000
 batch_size = 1000
 learning_rate = 1e-3
@@ -180,7 +180,7 @@ agent = dqn_agent.DqnAgent(
     q_network=q_net,
     optimizer=optimizer,
     observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-    epsilon_greedy=0.5,
+    epsilon_greedy=0.8,
     td_errors_loss_fn=common.element_wise_squared_loss,
     train_step_counter=train_step_counter)
 agent.initialize()
