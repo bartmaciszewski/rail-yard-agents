@@ -27,10 +27,10 @@ class RailYardGymEnv(gym.Env):
         self.ry = railyard.RailYard()
 
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
-        self.action_space = DiscreteDynamic(ry.NUMBER_OF_TRACKS*ry.NUMBER_OF_TRACKS*NUMBER_OF_CARS+1)
+        self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
         
         #state is the location and state of each rail car
-        self.observation_space = RailCarBoxSpace()
+        self.observation_space = RailCarBoxSpace(self.ry)
         #self.observation_space = RailCarTuplesSpace()
         #self.observation_space = spaces.Tuple([spaces.Tuple((spaces.Discrete(NUMBER_OF_TRACKS),  #which track
         #                                        spaces.Discrete(MAX_TRACK_LENGTH),  #which position
@@ -50,12 +50,12 @@ class RailYardGymEnv(gym.Env):
         self.period = 0
         
         #rebuild the rail yard
-        self.rail_yard = RailYard()
+        self.ry = railyard.RailYard()
 
         #build initial action space for this starting yard configuration
         self.action_space.available_actions = self.possible_actions()
         
-        return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule)
+        return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule)
 
     def step(self, action):
         """Follow an action to transition to the next state of the yard."""
@@ -64,14 +64,14 @@ class RailYardGymEnv(gym.Env):
         #step 1: check if we have ran out of time
         if self.period == MAX_NUMBER_OF_PERIODS:
             done = True
-            return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+            return self.observation_space.current_observation(self.cars, self.ry.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
 
         #step 2: ignore the action if not valid in this state
         if not self.action_space.contains(action):
-            return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+            return self.observation_space.current_observation(self.cars, self.ry.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
 
         #step 3: continue loading any racks
-        for rack in self.racks.values():
+        for rack in self.ry.racks.values():
             if rack.is_currently_loading():
                 rack.load_step()
 
@@ -80,11 +80,11 @@ class RailYardGymEnv(gym.Env):
         
             #step 3: switch i cars from source to destination track
             for i in range(decoded_action[2]):
-                self.tracks[decoded_action[1]].push(self.tracks[decoded_action[0]].pop())
+                self.ry.tracks[decoded_action[1]].push(self.ry.tracks[decoded_action[0]].pop())
         
             #step 4: start loading if the destination was a rack
-            if isinstance(self.tracks[decoded_action[1]],Rack):
-                self.tracks[decoded_action[1]].start_load()
+            if isinstance(self.ry.tracks[decoded_action[1]],railyard.Rack):
+                self.ry.tracks[decoded_action[1]].start_load()
 
         #step 5: determine the next possible actions from this new state
         self.action_space.available_actions = self.possible_actions()
@@ -97,19 +97,19 @@ class RailYardGymEnv(gym.Env):
 
         self.period += 1
         
-        return self.observation_space.current_observation(self.cars, self.tracks, self.loading_schedule), reward, done, None
+        return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule), reward, done, None
     
     def is_success_state(self):
         """Returns True if we have loaded all the required cars and moved them to the outbound track."""
 
         #Check if all scheduled cars loaded
-        for i in range(self.loading_schedule.number_of_sets()):
-            for car_to_load in self.loading_schedule.get_cars(i):
+        for i in range(self.ry.loading_schedule.number_of_sets()):
+            for car_to_load in self.ry.loading_schedule.get_cars(i):
                 car_loaded = False
                 #check if car is not empty and is on the outbound
                 if not car_to_load.is_empty():
-                    for car_on_outboun in self.outbound.cars:
-                        if car_on_outboun == car_to_load:
+                    for car_on_outbound in self.ry.outbound.cars:
+                        if car_on_outbound == car_to_load:
                             car_loaded = True
                 #return fals if there is car that has not been loaded or placed on the outbound
                 if car_loaded == False:
@@ -120,7 +120,7 @@ class RailYardGymEnv(gym.Env):
         """Return all the possible actions in this state."""
         actions = []
         actions.append(DO_NOTHING_ACTION)
-        for source_track in self.tracks.values(): #for each track in the rail yard
+        for source_track in self.ry.tracks.values(): #for each track in the rail yard
             for destination_track in source_track.connected_tracks: #for all the connected tracks
                 if not source_track.derail_up() and not destination_track.derail_up(): #don’t move any cars to/from loading racks if derail is up (e.g. loading)
                     if not source_track.is_empty() and not destination_track.is_full(): #check the source track is not empty and destination not full
@@ -131,10 +131,10 @@ class RailYardGymEnv(gym.Env):
     #encode an action to move cars from one track to another as an intetger
     def encode_action(self, source_track, destination_track, num_cars):
         i = source_track - 1
-        i *= NUMBER_OF_TRACKS
+        i *= self.ry.NUMBER_OF_TRACKS
         i += destination_track - 1
         #i *= NUMBER_OF_TRACKS
-        i *= NUMBER_OF_CARS
+        i *= self.ry.NUMBER_OF_CARS
         i += num_cars - 1
         #i *= NUMBER_OF_CARS
         return i
@@ -142,10 +142,10 @@ class RailYardGymEnv(gym.Env):
     #decode an action to move cars from one track to another
     def decode_action(self, i):
         out = []
-        out.append(i % NUMBER_OF_CARS + 1)
-        i = i // NUMBER_OF_CARS
-        out.append(i % NUMBER_OF_TRACKS + 1)
-        i = i // NUMBER_OF_TRACKS
+        out.append(i % self.ry.NUMBER_OF_CARS + 1)
+        i = i // self.ry.NUMBER_OF_CARS
+        out.append(i % self.ry.NUMBER_OF_TRACKS + 1)
+        i = i // self.ry.NUMBER_OF_TRACKS
         out.append(i + 1)
         #assert 0 <= i < NUMBER_OF_TRACKS
         return list(reversed(out))
@@ -153,8 +153,8 @@ class RailYardGymEnv(gym.Env):
     def render(self,mode="human"):
         output = "Period: " + str(self.period) + "\n"
         #sys.stdout.write("Period: " + str(self.period) + "\n")
-        for track in self.tracks.values():
-            if isinstance(track, Rack):
+        for track in self.ry.tracks.values():
+            if isinstance(track, railyard.Rack):
                 #sys.stdout.write("Rack " + str(track) + "\n")
                 output += "Rack " + str(track) + "\n"
             else:
@@ -269,13 +269,19 @@ class RailCarBoxSpace(gym.spaces.Box):
     it was on the schedule.
     """
 
-    def __init__(self):
+    def __init__(self,rail_yard):
         """
         Creates a new observation space as a 2 dimensional box of size (# cars, # variables about each car)
+
+        Args:
+            rail_yard : a handle to a RailYard object (cars, tracks, etc)
         """
-        self.NUM_CAR_VARIABLES = 5
-        self.MAX_CAR_VARIABLE_VALUE = max(MAX_TRACK_LENGTH, NUMBER_OF_CARS, NUMBER_OF_CARS, NUMBER_OF_SETS, NUMBER_OF_TRACKS, len(PRODUCTS))
-        super(RailCarBoxSpace, self).__init__(0,self.MAX_CAR_VARIABLE_VALUE, [NUMBER_OF_CARS, self.NUM_CAR_VARIABLES], dtype=np.int32)
+        self.ry = rail_yard
+        #how many fields to represent state of each car
+        self.NUM_CAR_VARIABLES = 5 
+        #what is the biggest possible field value
+        self.MAX_CAR_VARIABLE_VALUE = max(self.ry.MAX_TRACK_LENGTH, self.ry.NUMBER_OF_CARS, self.ry.NUMBER_OF_CARS, self.ry.NUMBER_OF_SETS, self.ry.NUMBER_OF_TRACKS, len(self.ry.PRODUCTS))
+        super(RailCarBoxSpace, self).__init__(0,self.MAX_CAR_VARIABLE_VALUE, [self.ry.NUMBER_OF_CARS, self.NUM_CAR_VARIABLES], dtype=np.int32)
                                                
     def current_observation(self, cars, tracks, loading_schedule):
         """
@@ -302,10 +308,10 @@ class RailCarBoxSpace(gym.spaces.Box):
                 #determine the set and product if on load schedule
                 found_car_on_schedule = False
                 for set in range(loading_schedule.number_of_sets()):
-                    for product in PRODUCTS.keys():
+                    for product in self.ry.PRODUCTS.keys():
           
                         #car is on schedule so add the set and product to the observation
-                        if loading_schedule.is_on_set_schedule(car, set+1, PRODUCTS[product]) == True:
+                        if self.ry.loading_schedule.is_on_set_schedule(car, set+1, self.ry.PRODUCTS[product]) == True:
                             observation[car.ID][0] = track.ID
                             observation[car.ID][1] = car_position
                             observation[car.ID][2] = car.empty_or_full
@@ -509,8 +515,8 @@ def main():
     rail_yard_env.reset()
     print("\nStarting game...\n")
     print("Loading Schedule:")
-    print(str(rail_yard_env.loading_schedule) + "\n")
-    rail_yard_env.render()
+    print(str(rail_yard_env.ry.loading_schedule) + "\n")
+    print(rail_yard_env.render())
     #ss = SimpleOneByOnePolicyAgent(rail_yard)
     #policy = MyopicGreedySortByProductPolicy(rail_yard, rail_yard.inbound, rail_yard.outbound, rail_yard.racks, rail_yard.marshalling_tracks)
     done = False
@@ -524,13 +530,13 @@ def main():
         if from_track == "" or to_track  == "" or num_cars == "" :
             action = DO_NOTHING_ACTION
         else:    
-            action = rail_yard.encode_action(int(from_track), int(to_track), int(num_cars))
-            if action not in rail_yard.action_space.available_actions:
+            action = rail_yard_env.encode_action(int(from_track), int(to_track), int(num_cars))
+            if action not in rail_yard_env.action_space.available_actions:
                 action = DO_NOTHING_ACTION #user chose an unavailable action
         
         #observation, reward, done, info = rail_yard.step(rail_yard.action_space.sample())
-        observation, reward, done, info = rail_yard.step(action)
-        rail_yard_env.render()
+        observation, reward, done, info = rail_yard_env.step(action)
+        print(rail_yard_env.render())
 
 if __name__ == '__main__':
     main()

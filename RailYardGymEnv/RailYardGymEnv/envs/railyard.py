@@ -16,10 +16,10 @@ class RailYard:
         #Create tracks
         self.lead1 = Track(1,5)
         self.inbound = Track(2,5)
-        self.marshalling_track1 = MarshallingTrack(3,5,PRODUCTS[0])
-        self.marshalling_track2 = MarshallingTrack(4,5,PRODUCTS[1])
-        self.rack1 = Rack(5,2,PRODUCTS[0],2)
-        self.rack2 = Rack(6,2,PRODUCTS[1],2)    
+        self.marshalling_track1 = MarshallingTrack(3,5,RailYard.PRODUCTS[0])
+        self.marshalling_track2 = MarshallingTrack(4,5,RailYard.PRODUCTS[1])
+        self.rack1 = Rack(5,2,RailYard.PRODUCTS[0],2)
+        self.rack2 = Rack(6,2,RailYard.PRODUCTS[1],2)    
         self.outbound = Track(7,5)
 
         #Connect tracks to form network
@@ -39,10 +39,10 @@ class RailYard:
         #Create cars
         self.cars = []
         for i in range(2):
-            self.cars.append(RailCar(i,"m" + str(i+1),EMPTY, PRODUCTS[0]))
+            self.cars.append(RailCar(i,"m" + str(i+1),RailYard.EMPTY, RailYard.PRODUCTS[0]))
             self.inbound.push(self.cars[i])
         for j in range(2,4):
-            self.cars.append(RailCar(j,"d" + str(j+1),EMPTY, PRODUCTS[1]))
+            self.cars.append(RailCar(j,"d" + str(j+1),RailYard.EMPTY, RailYard.PRODUCTS[1]))
             self.inbound.push(self.cars[j])
 
         #Create locomotive
@@ -62,10 +62,10 @@ class RailCar:
         self.product = product
 
     def is_empty(self):
-        return True if self.empty_or_full == EMPTY else False
+        return True if self.empty_or_full == RailYard.EMPTY else False
 
     def __str__(self):
-        if self.empty_or_full == EMPTY:
+        if self.empty_or_full == RailYard.EMPTY:
             return self.number.lower()
         else:
             return self.number.capitalize()
@@ -165,7 +165,7 @@ class Rack(Track):
             for car in self.cars:
                 #only fill up car for the rack’s product
                 if car.product == self.product:
-                    car.empty_or_full = FULL 
+                    car.empty_or_full = RailYard.FULL 
             self.is_loading = False
             self.current_load_time = 0
 
@@ -207,4 +207,38 @@ class Locomotive:
             self.active = False
         return hop
 
+class LoadingSchedule:
+    """A list of tuples that represents the rail cars and products that need to be loaded for a given set on a given day
+    """
+    def __init__(self):
+        self.loading_schedule = [[]]
+        self.cars = [[]] 
+    
+    def add_to_schedule(self, set, car, product):
+        #are we adding another set?
+        if set > len(self.loading_schedule):
+            self.loading_schedule.append([])
+            self.cars.append([])    
+        self.loading_schedule[set - 1].append([car, product])
+        self.cars[set - 1].append(car)
+        
+    def get_cars(self,set):
+        return self.cars[set - 1]
+    
+    def is_on_set_schedule(self, car, set, product):
+        for car_product in self.loading_schedule[set-1]:
+            if car_product[0] == car and car_product[1] == product:
+                return True
+        return False
+
+    def number_of_sets(self):
+        return(len(self.loading_schedule))
+
+    def __str__(self):
+        print_string = ""
+        for i in range(len(self.loading_schedule)):
+            print_string += "Set: " + str(i+1) + "\n"
+            for car_product in self.loading_schedule[i]:
+                print_string += "Car: " + car_product[0].number + " Product:" + car_product[1] + "\n"
+        return print_string
 
