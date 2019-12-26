@@ -24,7 +24,7 @@ class RailYardGymEnv(gym.Env):
     def __init__(self):
         
         #create the rail yard objects
-        self.ry = railyard.RailYard()
+        self.ry = railyard.RailYardMinScenario()
 
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
         self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
@@ -50,7 +50,7 @@ class RailYardGymEnv(gym.Env):
         self.period = 0
         
         #rebuild the rail yard
-        self.ry = railyard.RailYard()
+        self.ry = railyard.RailYardMinScenario()
 
         #build initial action space for this starting yard configuration
         self.action_space.available_actions = self.possible_actions()
@@ -311,7 +311,7 @@ class RailCarBoxSpace(gym.spaces.Box):
                     for product in self.ry.PRODUCTS.keys():
           
                         #car is on schedule so add the set and product to the observation
-                        if self.ry.loading_schedule.is_on_set_schedule(car, set+1, self.ry.PRODUCTS[product]) == True:
+                        if loading_schedule.is_on_set_schedule(car, set+1, self.ry.PRODUCTS[product]) == True:
                             observation[car.ID][0] = track.ID
                             observation[car.ID][1] = car_position
                             observation[car.ID][2] = car.empty_or_full
@@ -330,42 +330,6 @@ class RailCarBoxSpace(gym.spaces.Box):
                 car_position += 1
 
         return np.array(observation)
-
-
-class LoadingSchedule:
-    """A list of tuples that represents the rail cars and products that need to be loaded for a given set on a given day
-    """
-    def __init__(self):
-        self.ry.loading_schedule = [[]]
-        self.ry.cars = [[]] 
-    
-    def add_to_schedule(self, set, car, product):
-        #are we adding another set?
-        if set > len(self.ry.loading_schedule):
-            self.ry.loading_schedule.append([])
-            self.ry.cars.append([])    
-        self.ry.loading_schedule[set - 1].append([car, product])
-        self.ry.cars[set - 1].append(car)
-        
-    def get_cars(self,set):
-        return self.ry.cars[set - 1]
-    
-    def is_on_set_schedule(self, car, set, product):
-        for car_product in self.ry.loading_schedule[set-1]:
-            if car_product[0] == car and car_product[1] == product:
-                return True
-        return False
-
-    def number_of_sets(self):
-        return(len(self.ry.loading_schedule))
-
-    def __str__(self):
-        print_string = ""
-        for i in range(len(self.ry.loading_schedule)):
-            print_string += "Set: " + str(i+1) + "\n"
-            for car_product in self.ry.loading_schedule[i]:
-                print_string += "Car: " + car_product[0].number + " Product:" + car_product[1] + "\n"
-        return print_string
 
 class RailyardPolicy:
     def __init__(self, rail_yard):

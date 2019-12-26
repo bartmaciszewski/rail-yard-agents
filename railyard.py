@@ -53,7 +53,42 @@ class RailYard:
         self.loading_schedule.add_to_schedule(1, self.cars[1], self.cars[1].product)
         self.loading_schedule.add_to_schedule(1, self.cars[2], self.cars[2].product)
         self.loading_schedule.add_to_schedule(2, self.cars[3], self.cars[3].product)
+
+class RailYardMinScenario(RailYard):
+    def __init__(self):
+        self.NUMBER_OF_TRACKS = 3
+        self.MAX_TRACK_LENGTH = 3
+        self.NUMBER_OF_CARS = 1
+        self.NUMBER_OF_SETS = 1
+        self.INBOUND_TRACK_ID = 1
+        self.OUTBOUND_TRACK_ID = 3
+
+        #Create tracks
+        self.inbound = Track(1,3)
+        self.rack = Rack(2,3,RailYard.PRODUCTS[0],2)
+        self.outbound = Track(3,3)
+
+        #Connect tracks to form network
+        self.inbound.connect(self.rack)
+        self.inbound.connect(self.outbound)
         
+        #Create track reference lists
+        self.tracks = {1 : self.inbound, 2 : self.rack, 3 :  self.outbound}
+        self.racks = {1 : self.rack}
+        self.marshalling_tracks = []
+
+        #Create cars
+        self.cars = []
+        self.cars.append(RailCar(0,"m1",RailYard.EMPTY, RailYard.PRODUCTS[0]))
+        self.inbound.push(self.cars[0])
+        
+        #Create locomotive
+        self.loco = Locomotive()
+        
+        #Build load schedule
+        self.loading_schedule = LoadingSchedule()
+        self.loading_schedule.add_to_schedule(1, self.cars[0], self.cars[0].product)
+ 
 class RailCar:
     def __init__(self, ID, number, empty_full, product):
         self.number = number
