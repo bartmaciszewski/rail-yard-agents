@@ -64,11 +64,11 @@ class RailYardGymEnv(gym.Env):
         #step 1: check if we have ran out of time
         if self.period == MAX_NUMBER_OF_PERIODS:
             done = True
-            return self.observation_space.current_observation(self.cars, self.ry.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+            return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule), NEGATIVE_STEP_REWARD, done, None
 
         #step 2: ignore the action if not valid in this state
         if not self.action_space.contains(action):
-            return self.observation_space.current_observation(self.cars, self.ry.tracks, self.loading_schedule), NEGATIVE_STEP_REWARD, done, None
+            return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule), NEGATIVE_STEP_REWARD, done, None
 
         #step 3: continue loading any racks
         for rack in self.ry.racks.values():
@@ -336,34 +336,34 @@ class LoadingSchedule:
     """A list of tuples that represents the rail cars and products that need to be loaded for a given set on a given day
     """
     def __init__(self):
-        self.loading_schedule = [[]]
-        self.cars = [[]] 
+        self.ry.loading_schedule = [[]]
+        self.ry.cars = [[]] 
     
     def add_to_schedule(self, set, car, product):
         #are we adding another set?
-        if set > len(self.loading_schedule):
-            self.loading_schedule.append([])
-            self.cars.append([])    
-        self.loading_schedule[set - 1].append([car, product])
-        self.cars[set - 1].append(car)
+        if set > len(self.ry.loading_schedule):
+            self.ry.loading_schedule.append([])
+            self.ry.cars.append([])    
+        self.ry.loading_schedule[set - 1].append([car, product])
+        self.ry.cars[set - 1].append(car)
         
     def get_cars(self,set):
-        return self.cars[set - 1]
+        return self.ry.cars[set - 1]
     
     def is_on_set_schedule(self, car, set, product):
-        for car_product in self.loading_schedule[set-1]:
+        for car_product in self.ry.loading_schedule[set-1]:
             if car_product[0] == car and car_product[1] == product:
                 return True
         return False
 
     def number_of_sets(self):
-        return(len(self.loading_schedule))
+        return(len(self.ry.loading_schedule))
 
     def __str__(self):
         print_string = ""
-        for i in range(len(self.loading_schedule)):
+        for i in range(len(self.ry.loading_schedule)):
             print_string += "Set: " + str(i+1) + "\n"
-            for car_product in self.loading_schedule[i]:
+            for car_product in self.ry.loading_schedule[i]:
                 print_string += "Car: " + car_product[0].number + " Product:" + car_product[1] + "\n"
         return print_string
 
