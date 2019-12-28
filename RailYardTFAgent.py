@@ -123,7 +123,7 @@ def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 20 #number of training iterations (e.g. play a number of steps and then train) 
+num_iterations = 10 #number of training iterations (e.g. play a number of steps and then train) 
 collect_steps_per_iteration = 1000 #how many steps to play in each training iteration
 replay_buffer_max_length = 10000
 batch_size = 1000
@@ -158,10 +158,14 @@ print(train_env.action_spec())
 '''
 
 #Build the Qnetwork
+#TODO(bmac): normalize the input to the network
+#preprocessing_layer = keras.layers.Lambda(
+#                          lambda obs: tf.cast(obs, np.float32) / 255.)
 fc_layer_params = (100,)
 q_net = q_network.QNetwork(
     train_env.observation_spec(),
     train_env.action_spec(),
+    #preprocessing_layer=preprocessing_layer,
     #preprocessing_combiner=tf.keras.layers.Concatenate(),
     #        [tf.keras.layers.Input(shape=(6,), dtype='int32') for _ in range(len(train_env.observation_spec()))],
     #        axis=-1),
@@ -217,8 +221,8 @@ for _ in range(num_iterations):
   # Collect a few steps using collect_policy and save to the replay buffer.
   for _ in range(collect_steps_per_iteration):
     collect_step(train_env, agent.collect_policy, replay_buffer)
-    if train_env.current_time_step().is_last():
-        train_env.reset()
+    #if train_env.current_time_step().is_last():
+    #    train_env.reset()
 
   # Sample a batch of data from the buffer and update the agent's network.
   experience, unused_info = next(iterator)

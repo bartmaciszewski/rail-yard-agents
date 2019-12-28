@@ -104,7 +104,7 @@ class RailYardGymEnv(gym.Env):
 
         #Check if all scheduled cars loaded
         for i in range(self.ry.loading_schedule.number_of_sets()):
-            for car_to_load in self.ry.loading_schedule.get_cars(i):
+            for car_to_load in self.ry.loading_schedule.get_cars(i+1):
                 car_loaded = False
                 #check if car is not empty and is on the outbound
                 if not car_to_load.is_empty():
