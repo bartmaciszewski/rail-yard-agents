@@ -2,7 +2,9 @@ import sys
 import gym
 import random
 import numpy as np
-import railyard
+from railyard import RailYard
+from railyard import RailYardMinScenario
+from railyard import Rack
 
 from gym import spaces
 
@@ -24,7 +26,7 @@ class RailYardGymEnv(gym.Env):
     def __init__(self):
         
         #create the rail yard objects
-        self.ry = railyard.RailYardMinScenario()
+        self.ry = RailYardMinScenario()
 
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
         self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
@@ -50,7 +52,7 @@ class RailYardGymEnv(gym.Env):
         self.period = 0
         
         #rebuild the rail yard
-        self.ry = railyard.RailYardMinScenario()
+        self.ry = RailYardMinScenario()
 
         #build initial action space for this starting yard configuration
         self.action_space.available_actions = self.possible_actions()
@@ -65,33 +67,32 @@ class RailYardGymEnv(gym.Env):
         if self.period == MAX_NUMBER_OF_PERIODS:
             done = True
             return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule), NEGATIVE_STEP_REWARD, done, None
-
-        #step 2: ignore the action if not valid in this state
-        if not self.action_space.contains(action):
-            return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule), NEGATIVE_STEP_REWARD, done, None
-
-        #step 3: continue loading any racks
+ 
+        #step 2: continue loading any racks
         for rack in self.ry.racks.values():
             if rack.is_currently_loading():
                 rack.load_step()
 
-        if action != DO_NOTHING_ACTION:
-            decoded_action = self.decode_action(action)
-        
-            #step 3: switch i cars from source to destination track
-            for i in range(decoded_action[2]):
-                self.ry.tracks[decoded_action[1]].push(self.ry.tracks[decoded_action[0]].pop())
-        
-            #step 4: start loading if the destination was a rack
-            if isinstance(self.ry.tracks[decoded_action[1]],railyard.Rack):
-                self.ry.tracks[decoded_action[1]].start_load()
+        #make sure the action is valid for the state
+        if self.action_space.contains(action):
+
+            if action != DO_NOTHING_ACTION:
+                decoded_action = self.decode_action(action)
+            
+                #step 3: switch i cars from source to destination track
+                for i in range(decoded_action[2]):
+                    self.ry.tracks[decoded_action[1]].push(self.ry.tracks[decoded_action[0]].pop())
+            
+                #step 4: start loading if the destination was a rack
+                if isinstance(self.ry.tracks[decoded_action[1]],Rack):
+                    self.ry.tracks[decoded_action[1]].start_load()
 
         #step 5: determine the next possible actions from this new state
         self.action_space.available_actions = self.possible_actions()
 
         #have we moved all the cars to the outbound track?
         done = self.is_success_state() 
-
+  
         #reward completion of the game and penalize every move
         reward = NEGATIVE_STEP_REWARD if not done else EPISODE_SUCCESS_REWARD
 
@@ -154,7 +155,7 @@ class RailYardGymEnv(gym.Env):
         output = "Period: " + str(self.period) + "\n"
         #sys.stdout.write("Period: " + str(self.period) + "\n")
         for track in self.ry.tracks.values():
-            if isinstance(track, railyard.Rack):
+            if isinstance(track, Rack):
                 #sys.stdout.write("Rack " + str(track) + "\n")
                 output += "Rack " + str(track) + "\n"
             else:
