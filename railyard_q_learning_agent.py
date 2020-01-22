@@ -10,7 +10,7 @@ def observation_to_str(state):
     return "".join(str(c) for l in state for c in l)
 
 #hyperparamerts
-num_iterations = 100000
+num_iterations = 10000
 alpha0 = 0.5
 decay = 0.005
 gamma = 1.0
