@@ -3,9 +3,9 @@ from __future__ import absolute_import, division, print_function
 import base64
 import imageio
 #import IPython
-import matplotlib
-import matplotlib.pyplot as plt
-import PIL.Image
+#import matplotlib
+#import matplotlib.pyplot as plt
+#import PIL.Image
 #import pyvirtualdisplay
 
 import tensorflow as tf
@@ -38,6 +38,12 @@ class ShowProgress:
             self.counter += 1
         if self.counter % 100 == 0:
             print("\r{}/{}".format(self.counter, self.total), end="")
+
+class SuccessObserver:
+    @tf.function
+    def __call__(self, trajectory):
+        if trajectory.is_boundary():
+            print("Successfully loaded cars!")
 
 def compute_avg_return(environment, policy, num_episodes=10):
     """Computes the average return of a policy.
@@ -110,19 +116,21 @@ def train_agent(n_iterations):
         time_step, policy_state = collect_driver.run(time_step, policy_state)
         trajectories, buffer_info = next(iterator)
         train_loss = agent.train(trajectories)
-        print("\r{} loss:{:.5f}".format(
-            iteration, train_loss.loss.numpy()), end="")
+        print("\r{} loss:{:.5f}".format(iteration, train_loss.loss.numpy()), end="")
         if iteration % 1000 == 0:
             log_metrics(train_metrics)
 
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 1000000 #number of training iterations (e.g. play a number of steps and then train) 
-collect_steps_per_iteration = 10 #how many steps to play in each training iteration
+num_iterations = 500000 #number of training iterations (e.g. play a number of steps and then train) 
+collect_steps_per_iteration = 1 #how many steps to play in each training iteration
+pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
 replay_buffer_max_length = 1000000
 batch_size = 32
-learning_rate = 1e-2
+learning_rate = 2.5e-3
+initial_e = 0.5 #initial epsilon
+final_e = 0.01 #final epsilon
 log_interval = 2 
 
 #how many episodes to play to evaluate the agent 
@@ -144,7 +152,7 @@ current_py_env = train_py_env
 #TODO(bmac): normalize the input to the network
 #preprocessing_layer = keras.layers.Lambda(
 #                          lambda obs: tf.cast(obs, np.float32) / 255.)
-fc_layer_params = [32,32]
+fc_layer_params = [32]
 q_net = q_network.QNetwork(
     train_env.observation_spec(),
     train_env.action_spec(),
@@ -171,19 +179,19 @@ q_net = q_network.QNetwork(
 from tf_agents.agents.dqn.dqn_agent import DqnAgent
 
 train_step = tf.Variable(0)
-update_period = 10 # run a training step every 10 collect steps
-optimizer = tf.compat.v1.train.RMSPropOptimizer(learning_rate=2.5e-4, decay=0.95, momentum=0.0,
+#update_period = 10 # run a training step every 10 collect steps
+optimizer = tf.compat.v1.train.RMSPropOptimizer(learning_rate=learning_rate, decay=0.95, momentum=0.0,
                                      epsilon=0.00001, centered=True)
 epsilon_fn = keras.optimizers.schedules.PolynomialDecay(
-    initial_learning_rate=1.0, # initial ε
+    initial_learning_rate=initial_e, # initial ε
     decay_steps=num_iterations,
-    end_learning_rate=0.01) # final ε
+    end_learning_rate=final_e) # final ε
 agent = DqnAgent(train_env.time_step_spec(),
                  train_env.action_spec(),
                  q_network=q_net,
                  optimizer=optimizer,
-                 observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-                 target_update_period=10,
+                 #observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
+                 target_update_period=100,
                  td_errors_loss_fn=keras.losses.Huber(reduction="none"),
                  gamma=0.99, # discount factor
                  train_step_counter=train_step,
@@ -199,6 +207,9 @@ replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
 #An observer to write the trajectories to the buffer
 replay_buffer_observer = replay_buffer.add_batch
 
+#An observer to tell us if we have won the game
+success_observer = SuccessObserver()
+
 #Training metrics
 train_metrics = [
     tf_metrics.NumberOfEpisodes(),
@@ -211,20 +222,20 @@ logging.getLogger().setLevel(logging.INFO)
 #Create the driver
 collect_driver = DynamicStepDriver(
     train_env,
-    #agent.collect_policy,
-    MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec()),
-    observers=[replay_buffer_observer] + train_metrics,
+    agent.collect_policy,
+    #MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec()),
+    observers=[replay_buffer_observer, success_observer] + train_metrics,
     num_steps=collect_steps_per_iteration) # collect # steps for each training iteration
 
 #Collect some inital experience with random policy
-initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),
-                                        train_env.action_spec())
+initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+
 init_driver = DynamicStepDriver(
     train_env,
     initial_collect_policy,
-    observers=[replay_buffer.add_batch,ShowProgress(1000)],
-    num_steps=1000)
-#final_time_step, final_policy_state = init_driver.run()
+    observers=[replay_buffer.add_batch,ShowProgress(pretrain_steps)],
+    num_steps=pretrain_steps)
+final_time_step, final_policy_state = init_driver.run()
 
 # Dataset generates trajectories with shape [Bx2x...]
 dataset = replay_buffer.as_dataset(
@@ -242,6 +253,8 @@ agent.train = function(agent.train)
 
 current_py_env = train_py_env
 train_agent(num_iterations)
+
+print(agent.policy)
 
 current_py_env = eval_py_env
 create_policy_eval_text_log(agent.policy, "trained-agent",num_eval_episodes)
