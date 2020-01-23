@@ -39,12 +39,6 @@ class ShowProgress:
         if self.counter % 100 == 0:
             print("\r{}/{}".format(self.counter, self.total), end="")
 
-class SuccessObserver:
-    @tf.function
-    def __call__(self, trajectory):
-        if trajectory.is_boundary():
-            print("Successfully loaded cars!")
-
 def compute_avg_return(environment, policy, num_episodes=10):
     """Computes the average return of a policy.
 
@@ -123,7 +117,7 @@ def train_agent(n_iterations):
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 500000 #number of training iterations (e.g. play a number of steps and then train) 
+num_iterations = 1000000#500000 #number of training iterations (e.g. play a number of steps and then train) 
 collect_steps_per_iteration = 1 #how many steps to play in each training iteration
 pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
 replay_buffer_max_length = 1000000
@@ -207,9 +201,6 @@ replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
 #An observer to write the trajectories to the buffer
 replay_buffer_observer = replay_buffer.add_batch
 
-#An observer to tell us if we have won the game
-success_observer = SuccessObserver()
-
 #Training metrics
 train_metrics = [
     tf_metrics.NumberOfEpisodes(),
@@ -224,11 +215,12 @@ collect_driver = DynamicStepDriver(
     train_env,
     agent.collect_policy,
     #MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec()),
-    observers=[replay_buffer_observer, success_observer] + train_metrics,
+    observers=[replay_buffer_observer] + train_metrics,
     num_steps=collect_steps_per_iteration) # collect # steps for each training iteration
 
 #Collect some inital experience with random policy
-initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+#initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
 
 init_driver = DynamicStepDriver(
     train_env,
@@ -253,8 +245,6 @@ agent.train = function(agent.train)
 
 current_py_env = train_py_env
 train_agent(num_iterations)
-
-print(agent.policy)
 
 current_py_env = eval_py_env
 create_policy_eval_text_log(agent.policy, "trained-agent",num_eval_episodes)

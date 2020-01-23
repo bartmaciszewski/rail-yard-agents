@@ -26,7 +26,8 @@ class RailYardGymEnv(gym.Env):
     def __init__(self):
         
         #create the rail yard objects
-        self.ry = RailYardMinScenario()
+        self.ry = RailYard()
+        #self.ry = RailYardMinScenario()
 
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
         self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
@@ -52,7 +53,8 @@ class RailYardGymEnv(gym.Env):
         self.period = 0
         
         #rebuild the rail yard
-        self.ry = RailYardMinScenario()
+        self.ry = RailYard()
+        #self.ry = RailYardMinScenario()
 
         #build initial action space for this starting yard configuration
         self.action_space.available_actions = self.possible_actions()
