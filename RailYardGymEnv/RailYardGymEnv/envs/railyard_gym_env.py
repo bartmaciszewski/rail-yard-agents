@@ -2,9 +2,9 @@ import sys
 import gym
 import random
 import numpy as np
-from railyard import RailYard
-from railyard import RailYardMinScenario
-from railyard import Rack
+from RailYardGymEnv.envs.railyard_model import RailYard
+from RailYardGymEnv.envs.railyard_model import RailYardMinScenario
+from RailYardGymEnv.envs.railyard_model import Rack
 
 from gym import spaces
 
