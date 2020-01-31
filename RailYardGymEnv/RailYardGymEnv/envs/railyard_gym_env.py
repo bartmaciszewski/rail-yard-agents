@@ -15,7 +15,7 @@ NEGATIVE_STEP_REWARD = -10
 EPISODE_SUCCESS_REWARD = 1000
 
 #Time limit for each loading day
-MAX_NUMBER_OF_PERIODS = 100
+MAX_NUMBER_OF_PERIODS = 10000
 
 # Dimensions of the map
 MAP_WIDTH, MAP_HEIGHT = 24, 24
@@ -28,6 +28,8 @@ class RailYardGymEnv(gym.Env):
         #create the rail yard objects
         self.ry = RailYard()
         #self.ry = RailYardMinScenario()
+
+        self.period = 0
 
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
         self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
