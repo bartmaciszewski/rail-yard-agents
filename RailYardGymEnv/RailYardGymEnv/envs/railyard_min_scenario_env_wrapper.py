@@ -19,13 +19,19 @@ class RailYardMinScenarioEnvWrapper(gym.Wrapper):
         self.env.observation_space = RailCarBoxSpace(self.env.ry)
 
     def reset(self):
-        self.env.reset()
+        super().reset()
         self.env.ry = RailYardMinScenario()
 
         #build initial action space for this starting yard configuration
         self.env.action_space.available_actions = self.env.possible_actions()
         
         return self.env.observation_space.current_observation(self.env.ry.cars, self.env.ry.tracks, self.env.ry.loading_schedule)
+
+    def render(self,mode="human"):
+        return self.env.render()
+
+    def step(self, action):
+        return self.env.step(action)
 
 if __name__ == '__main__':
     rail_yard_env = RailYardMinScenarioEnvWrapper(gym.make("RailYardGymEnv-v0"))

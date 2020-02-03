@@ -15,7 +15,7 @@ NEGATIVE_STEP_REWARD = -10
 EPISODE_SUCCESS_REWARD = 1000
 
 #Time limit for each loading day
-MAX_NUMBER_OF_PERIODS = 10000
+MAX_NUMBER_OF_PERIODS = 100
 
 # Dimensions of the map
 MAP_WIDTH, MAP_HEIGHT = 24, 24
@@ -265,7 +265,27 @@ class RailCarTuplesSpace(gym.spaces.Tuple):
 
         return tuple(observation)
 
+class MinScenarioRailYardGymEnv(RailYardGymEnv):
+    """
+    A Rail yard environment that has only 3 tracks and 1 car to load
+    """
 
+    def __init__(self):
+        #create the rail yard objects
+        self.ry = RailYardMinScenario()
+        self.period = 0
+        #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
+        self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
+        #state is the location and state of each rail car
+        self.observation_space = RailCarBoxSpace(self.ry)
+
+    def reset(self):
+        #rebuild the rail yard
+        self.ry = RailYardMinScenario()
+        self.period = 0
+        #build initial action space for this starting yard configuration
+        self.action_space.available_actions = self.possible_actions()
+        return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule)
 
 class RailCarBoxSpace(gym.spaces.Box):
     """

@@ -111,10 +111,10 @@ def train_agent(n_iterations):
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 5000000#500000 #number of training iterations (e.g. play a number of steps and then train) 
-collect_steps_per_iteration = 10 #how many steps to play in each training iteration
+num_iterations = 100000#500000 #number of training iterations (e.g. play a number of steps and then train) 
+collect_steps_per_iteration = 1 #how many steps to play in each training iteration
 pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
-replay_buffer_max_length = 1000000
+replay_buffer_max_length = 10000
 batch_size = 32
 learning_rate = 2.5e-3
 initial_e = 0.5 #initial epsilon
@@ -125,7 +125,8 @@ log_interval = 2
 num_eval_episodes = 5 
 
 #create training and evaluation environment and convert to Tensorflow environments
-env_name = 'RailYardGymEnv-v0'
+#env_name = 'RailYardGymEnv-v0'
+env_name = 'MinScenarioRailYardGymEnv-v0'
 train_py_env = suite_gym.load(env_name)
 eval_py_env = suite_gym.load(env_name)
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
@@ -196,8 +197,8 @@ collect_driver = DynamicStepDriver(
     num_steps=collect_steps_per_iteration) # collect # steps for each training iteration
 
 #Collect some inital experience with random policy
-#initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
-initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+#initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
 
 init_driver = DynamicStepDriver(
     train_env,
