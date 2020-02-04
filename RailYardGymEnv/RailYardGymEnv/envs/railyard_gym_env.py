@@ -497,10 +497,18 @@ class MyopicSortBySetPolicy(RailyardPolicy):
 
         self.current_set += 1
 
-def main():
+def main(args):
     """ Main 
     """
-    rail_yard_env = RailYardGymEnv()
+    #Check if we should create a simplified environment
+    if len(args) > 1:
+        if args[1] == '-s':
+            rail_yard_env = gym.make("MinScenarioRailYardGymEnv-v0")#MinScenarioRailYardGymEnv()
+        else:
+            print('python railyard_gym_env.py -s\n')
+    else:
+        rail_yard_env = gym.make("RailYardGymEnv-v0")#RailYardGymEnv()
+
     rail_yard_env.reset()
     print("\nStarting game...\n")
     print("Loading Schedule:")
@@ -527,5 +535,5 @@ def main():
         observation, reward, done, info = rail_yard_env.step(action)
         print(rail_yard_env.render())
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+   main(sys.argv)
