@@ -19,6 +19,7 @@ from tf_agents.eval.metric_utils import log_metrics
 import logging
 import base64
 import imageio
+import datetime
 
 import RailYardGymEnv
 from min_scenario_policy import MinYardScenarioPolicy
@@ -97,21 +98,34 @@ def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
                 video.append_data(eval_py_env.render())
 
 def train_agent(n_iterations):
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = 'logs/dqn_agent/' + current_time + '/train'
+    writer = tf.summary.create_file_writer(train_log_dir)
     time_step = None
     policy_state = agent.collect_policy.get_initial_state(train_env.batch_size)
     iterator = iter(dataset)
-    for iteration in range(n_iterations):
-        time_step, policy_state = collect_driver.run(time_step, policy_state)
-        trajectories, buffer_info = next(iterator)
-        train_loss = agent.train(trajectories)
-        print("\r{} loss:{:.5f}".format(iteration, train_loss.loss.numpy()), end="")
-        if iteration % 1000 == 0:
-            log_metrics(train_metrics)
+    # train_summary_writer = tf.compat.v2.summary.create_file_writer(
+    # train_log_dir, flush_millis= 5 * 1000)
+    # train_summary_writer.set_as_default()
+    with writer.as_default():
+        for iteration in range(n_iterations):
+            time_step, policy_state = collect_driver.run(time_step, policy_state)
+            trajectories, buffer_info = next(iterator)
+            train_loss = agent.train(trajectories)
+            #log metrics
+            print("\r{} loss:{:.5f}".format(iteration, train_loss.loss.numpy()), end="")
+            if iteration % 1000 == 0:
+                log_metrics(train_metrics)
+                tf.summary.scalar("number_of_episodes", train_metrics[0].result(), iteration)
+                tf.summary.scalar("environment_steps", train_metrics[1].result(), iteration)
+                tf.summary.scalar("average_return", train_metrics[2].result(), iteration)
+                tf.summary.scalar("average_episode_length", train_metrics[3].result(), iteration)
+                writer.flush()
 
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 100000#500000 #number of training iterations (e.g. play a number of steps and then train) 
+num_iterations = 200000#500000 #number of training iterations (e.g. play a number of steps and then train) 
 collect_steps_per_iteration = 1 #how many steps to play in each training iteration
 pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
 replay_buffer_max_length = 10000
@@ -151,7 +165,7 @@ q_net = q_network.QNetwork(
     #        axis=-1),
     fc_layer_params=fc_layer_params)
 
-train_step = tf.Variable(0)
+train_step = tf.Variable(0,dtype=tf.int64)
 optimizer = tf.compat.v1.train.RMSPropOptimizer(learning_rate=learning_rate, decay=0.95, momentum=0.0,
                                      epsilon=0.00001, centered=True)
 epsilon_fn = keras.optimizers.schedules.PolynomialDecay(
