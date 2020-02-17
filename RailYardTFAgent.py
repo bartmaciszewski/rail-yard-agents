@@ -104,9 +104,6 @@ def train_agent(n_iterations):
     time_step = None
     policy_state = agent.collect_policy.get_initial_state(train_env.batch_size)
     iterator = iter(dataset)
-    # train_summary_writer = tf.compat.v2.summary.create_file_writer(
-    # train_log_dir, flush_millis= 5 * 1000)
-    # train_summary_writer.set_as_default()
     with writer.as_default():
         for iteration in range(n_iterations):
             time_step, policy_state = collect_driver.run(time_step, policy_state)
@@ -130,10 +127,11 @@ collect_steps_per_iteration = 1 #how many steps to play in each training iterati
 pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
 replay_buffer_max_length = 10000
 batch_size = 32
-learning_rate = 2.5e-3
+learning_rate = 2.5e-3 #2.5e-3 how fast to update the Q value function
 initial_e = 0.5 #initial epsilon
 final_e = 0.01 #final epsilon
-log_interval = 2 
+target_update_period = 100
+#log_interval = 2 
 
 #how many episodes to play to evaluate the agent 
 num_eval_episodes = 5 
@@ -177,7 +175,7 @@ agent = DqnAgent(train_env.time_step_spec(),
                  q_network=q_net,
                  optimizer=optimizer,
                  #observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-                 target_update_period=100,
+                 target_update_period=tartget_update_period,
                  td_errors_loss_fn=keras.losses.Huber(reduction="none"),
                  gamma=0.99, # discount factor
                  train_step_counter=train_step,
@@ -206,7 +204,6 @@ logging.getLogger().setLevel(logging.INFO)
 collect_driver = DynamicStepDriver(
     train_env,
     agent.collect_policy,
-    #MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec()),
     observers=[replay_buffer_observer] + train_metrics,
     num_steps=collect_steps_per_iteration) # collect # steps for each training iteration
 
