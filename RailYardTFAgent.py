@@ -134,7 +134,7 @@ target_update_period = 100
 #log_interval = 2 
 
 #how many episodes to play to evaluate the agent 
-num_eval_episodes = 5 
+num_eval_episodes = 5
 
 #create training and evaluation environment and convert to Tensorflow environments
 #env_name = 'RailYardGymEnv-v0'
@@ -175,7 +175,7 @@ agent = DqnAgent(train_env.time_step_spec(),
                  q_network=q_net,
                  optimizer=optimizer,
                  #observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-                 target_update_period=tartget_update_period,
+                 target_update_period=target_update_period,
                  td_errors_loss_fn=keras.losses.Huber(reduction="none"),
                  gamma=0.99, # discount factor
                  train_step_counter=train_step,
