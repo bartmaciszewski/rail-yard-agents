@@ -29,6 +29,8 @@ class RailYardGymEnv(gym.Env):
         self.ry = RailYard()
         #self.ry = RailYardMinScenario()
 
+        self.period = 0
+
         #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
         self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
         
@@ -263,7 +265,27 @@ class RailCarTuplesSpace(gym.spaces.Tuple):
 
         return tuple(observation)
 
+class MinScenarioRailYardGymEnv(RailYardGymEnv):
+    """
+    A Rail yard environment that has only 3 tracks and 1 car to load
+    """
 
+    def __init__(self):
+        #create the rail yard objects
+        self.ry = RailYardMinScenario()
+        self.period = 0
+        #number of actions is defined by how many combinations of cars we can move from track to track and do nothing action     
+        self.action_space = DiscreteDynamic(self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_TRACKS*self.ry.NUMBER_OF_CARS+1)
+        #state is the location and state of each rail car
+        self.observation_space = RailCarBoxSpace(self.ry)
+
+    def reset(self):
+        #rebuild the rail yard
+        self.ry = RailYardMinScenario()
+        self.period = 0
+        #build initial action space for this starting yard configuration
+        self.action_space.available_actions = self.possible_actions()
+        return self.observation_space.current_observation(self.ry.cars, self.ry.tracks, self.ry.loading_schedule)
 
 class RailCarBoxSpace(gym.spaces.Box):
     """
@@ -475,10 +497,18 @@ class MyopicSortBySetPolicy(RailyardPolicy):
 
         self.current_set += 1
 
-def main():
+def main(args):
     """ Main 
     """
-    rail_yard_env = RailYardGymEnv()
+    #Check if we should create a simplified environment
+    if len(args) > 1:
+        if args[1] == '-s':
+            rail_yard_env = gym.make("MinScenarioRailYardGymEnv-v0")#MinScenarioRailYardGymEnv()
+        else:
+            print('python railyard_gym_env.py -s\n')
+    else:
+        rail_yard_env = gym.make("RailYardGymEnv-v0")#RailYardGymEnv()
+
     rail_yard_env.reset()
     print("\nStarting game...\n")
     print("Loading Schedule:")
@@ -505,5 +535,5 @@ def main():
         observation, reward, done, info = rail_yard_env.step(action)
         print(rail_yard_env.render())
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+   main(sys.argv)

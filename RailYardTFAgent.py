@@ -1,17 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
-import base64
-import imageio
-#import IPython
-#import matplotlib
-#import matplotlib.pyplot as plt
-#import PIL.Image
-#import pyvirtualdisplay
-
 import tensorflow as tf
 from tensorflow import keras
 
-from tf_agents.agents.dqn import dqn_agent
+from tf_agents.agents.dqn.dqn_agent import DqnAgent
 from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
@@ -25,6 +17,9 @@ from tf_agents.utils import common
 from tf_agents.utils.common import function
 from tf_agents.eval.metric_utils import log_metrics
 import logging
+import base64
+import imageio
+import datetime
 
 import RailYardGymEnv
 from min_scenario_policy import MinYardScenarioPolicy
@@ -103,35 +98,47 @@ def create_policy_eval_video(policy, filename, num_episodes=5, fps=30):
                 video.append_data(eval_py_env.render())
 
 def train_agent(n_iterations):
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = 'logs/dqn_agent/' + current_time + '/train'
+    writer = tf.summary.create_file_writer(train_log_dir)
     time_step = None
     policy_state = agent.collect_policy.get_initial_state(train_env.batch_size)
     iterator = iter(dataset)
-    for iteration in range(n_iterations):
-        time_step, policy_state = collect_driver.run(time_step, policy_state)
-        trajectories, buffer_info = next(iterator)
-        train_loss = agent.train(trajectories)
-        print("\r{} loss:{:.5f}".format(iteration, train_loss.loss.numpy()), end="")
-        if iteration % 1000 == 0:
-            log_metrics(train_metrics)
+    with writer.as_default():
+        for iteration in range(n_iterations):
+            time_step, policy_state = collect_driver.run(time_step, policy_state)
+            trajectories, buffer_info = next(iterator)
+            train_loss = agent.train(trajectories)
+            #log metrics
+            print("\r{} loss:{:.5f}".format(iteration, train_loss.loss.numpy()), end="")
+            if iteration % 1000 == 0:
+                log_metrics(train_metrics)
+                tf.summary.scalar("number_of_episodes", train_metrics[0].result(), iteration)
+                tf.summary.scalar("environment_steps", train_metrics[1].result(), iteration)
+                tf.summary.scalar("average_return", train_metrics[2].result(), iteration)
+                tf.summary.scalar("average_episode_length", train_metrics[3].result(), iteration)
+                writer.flush()
 
 tf.compat.v1.enable_v2_behavior()
 
 #training parameters
-num_iterations = 2000000#500000 #number of training iterations (e.g. play a number of steps and then train) 
+num_iterations = 200000#500000 #number of training iterations (e.g. play a number of steps and then train) 
 collect_steps_per_iteration = 1 #how many steps to play in each training iteration
 pretrain_steps = 10000 #number of steps to initialize the buffer with a pre trained policy
-replay_buffer_max_length = 100000
+replay_buffer_max_length = 10000
 batch_size = 32
-learning_rate = 2.5e-3
+learning_rate = 2.5e-3 #2.5e-3 how fast to update the Q value function
 initial_e = 0.5 #initial epsilon
 final_e = 0.01 #final epsilon
-log_interval = 2 
+target_update_period = 100
+#log_interval = 2 
 
 #how many episodes to play to evaluate the agent 
-num_eval_episodes = 5 
+num_eval_episodes = 5
 
 #create training and evaluation environment and convert to Tensorflow environments
-env_name = 'RailYardGymEnv-v0'
+#env_name = 'RailYardGymEnv-v0'
+env_name = 'MinScenarioRailYardGymEnv-v0'
 train_py_env = suite_gym.load(env_name)
 eval_py_env = suite_gym.load(env_name)
 train_env = tf_py_environment.TFPyEnvironment(train_py_env)
@@ -156,24 +163,7 @@ q_net = q_network.QNetwork(
     #        axis=-1),
     fc_layer_params=fc_layer_params)
 
-#Instantiate the DQN agent
-#optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
-#train_step_counter = tf.Variable(0)
-#agent = dqn_agent.DqnAgent(
-#    train_env.time_step_spec(),
-#    train_env.action_spec(),
-#    q_network=q_net,
-#    optimizer=optimizer,
-#    observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-#    epsilon_greedy=0.5,
-#    td_errors_loss_fn=common.element_wise_squared_loss,
-#    train_step_counter=train_step_counter)
-#agent.initialize()
-
-from tf_agents.agents.dqn.dqn_agent import DqnAgent
-
-train_step = tf.Variable(0)
-#update_period = 10 # run a training step every 10 collect steps
+train_step = tf.Variable(0,dtype=tf.int64)
 optimizer = tf.compat.v1.train.RMSPropOptimizer(learning_rate=learning_rate, decay=0.95, momentum=0.0,
                                      epsilon=0.00001, centered=True)
 epsilon_fn = keras.optimizers.schedules.PolynomialDecay(
@@ -185,7 +175,7 @@ agent = DqnAgent(train_env.time_step_spec(),
                  q_network=q_net,
                  optimizer=optimizer,
                  #observation_and_action_constraint_splitter=observation_and_action_constraint_splitter,
-                 target_update_period=100,
+                 target_update_period=target_update_period,
                  td_errors_loss_fn=keras.losses.Huber(reduction="none"),
                  gamma=0.99, # discount factor
                  train_step_counter=train_step,
@@ -214,13 +204,12 @@ logging.getLogger().setLevel(logging.INFO)
 collect_driver = DynamicStepDriver(
     train_env,
     agent.collect_policy,
-    #MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec()),
     observers=[replay_buffer_observer] + train_metrics,
     num_steps=collect_steps_per_iteration) # collect # steps for each training iteration
 
 #Collect some inital experience with random policy
-#initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
-initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+initial_collect_policy = MinYardScenarioPolicy(train_env.time_step_spec(),train_env.action_spec())#RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
+#initial_collect_policy = RandomTFPolicy(train_env.time_step_spec(),train_env.action_spec())
 
 init_driver = DynamicStepDriver(
     train_env,
@@ -237,11 +226,6 @@ dataset = replay_buffer.as_dataset(
 
 collect_driver.run = function(collect_driver.run)
 agent.train = function(agent.train)
-
-# Evaluate the agent's policy once before training.
-#current_py_env = eval_py_env
-#avg_return = compute_avg_return(eval_env, agent.policy, num_eval_episodes)
-#returns = [avg_return]
 
 current_py_env = train_py_env
 train_agent(num_iterations)
